@@ -196,14 +196,18 @@
 
   .furniture {
     position: absolute;
-    background: var(--furn-color, #cbd5e1);
-    border: 2px solid rgba(0,0,0,0.45);
-    border-radius: 2px;
     cursor: move;
     user-select: none;
     transform-origin: center;
     transition: outline 0.1s ease;
-    overflow: hidden;
+  }
+  .furniture-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
   }
   .furniture.selected {
     outline: 2px solid var(--accent);
@@ -221,12 +225,10 @@
     text-align: center;
     pointer-events: none;
   }
-  /* Shape-specific rendering. L-shape gets clip-path inline (depends on notch dims).
-     Flip H mirrors clip-path direction for L-shapes (set inline in JS). */
-  .furniture[data-shape="circle"],
-  .furniture[data-shape="oval"] { border-radius: 50%; }
-  .furniture[data-shape="round"] { border-radius: 14%; }
-  /* For L-shape, push label to a corner that is always inside the L body. */
+  /* Shape outline/fill is drawn by an inline SVG (.furniture-svg) per item.
+     The .furniture div is a transparent container; selection outline is a
+     rectangular box around its bounding box (intentional, matches Figma). */
+  /* For L-shape, push label into the L's body (top corner opposite the notch). */
   .furniture[data-shape="l"] .furniture-inner {
     align-items: flex-start;
     justify-content: flex-start;
@@ -253,6 +255,10 @@
     font-size: 8px;
     color: rgba(0,0,0,0.55);
     margin-top: 1px;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .furniture .handle {
     position: absolute;
@@ -901,6 +907,35 @@ function renderFloor() {
   renderFurniture();
 }
 
+// Build the inline SVG body that draws the furniture's outline + fill.
+// Single source of truth for shape rendering. viewBox 0..100 (stretched
+// to fit via preserveAspectRatio="none"); vector-effect="non-scaling-stroke"
+// keeps stroke a uniform 2px regardless of element size.
+function renderShapeSVG(it) {
+  const fill = it.color;
+  const stroke = 'rgba(0,0,0,0.55)';
+  const sw = 2;
+  let body;
+  if (it.shape === 'l') {
+    const nw = Math.max(0.01, Math.min(it.w - 0.01, it.notchW != null ? it.notchW : it.w * 0.5));
+    const nd = Math.max(0.01, Math.min(it.d - 0.01, it.notchD != null ? it.notchD : it.d * 0.5));
+    const nxL = ((it.w - nw) / it.w) * 100;
+    const nxR = (nw / it.w) * 100;
+    const ny  = (nd / it.d) * 100;
+    const pts = it.flipH
+      ? `0,${ny} ${nxR},${ny} ${nxR},0 100,0 100,100 0,100`
+      : `0,0 ${nxL},0 ${nxL},${ny} 100,${ny} 100,100 0,100`;
+    body = `<polygon points="${pts}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="miter" vector-effect="non-scaling-stroke"/>`;
+  } else if (it.shape === 'circle' || it.shape === 'oval') {
+    body = `<ellipse cx="50" cy="50" rx="50" ry="50" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke"/>`;
+  } else if (it.shape === 'round') {
+    body = `<rect x="0" y="0" width="100" height="100" rx="14" ry="14" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke"/>`;
+  } else {
+    body = `<rect x="0" y="0" width="100" height="100" rx="1" ry="1" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke"/>`;
+  }
+  return `<svg class="furniture-svg" viewBox="0 0 100 100" preserveAspectRatio="none">${body}</svg>`;
+}
+
 function renderFurniture() {
   const items = currentItems();
   const f = FLOORS[state.currentFloor];
@@ -915,27 +950,21 @@ function renderFurniture() {
     el.style.top = (f.offsetY + it.y * f.pxPerFt) + 'px';
     el.style.width = (it.w * f.pxPerFt) + 'px';
     el.style.height = (it.d * f.pxPerFt) + 'px';
-    el.style.setProperty('--furn-color', it.color);
-    el.style.background = it.color;
     el.style.transform = `rotate(${it.rot}deg)`;
-    // L-shape: clip a rectangular notch from the top-right corner (or top-left if flipped).
+    // For L-shape, constrain the text to the L's leg width so the label
+    // never floats over the notch region.
+    let labelStyle = '';
     if (shape === 'l') {
-      const nw = Math.max(0.001, Math.min(it.w - 0.01, it.notchW || it.w * 0.5));
-      const nd = Math.max(0.001, Math.min(it.d - 0.01, it.notchD || it.d * 0.5));
-      const nxL = ((it.w - nw) / it.w) * 100;
-      const nxR = (nw / it.w) * 100;
-      const ny  = (nd / it.d) * 100;
-      el.style.clipPath = it.flipH
-        ? `polygon(0% ${ny}%, ${nxR}% ${ny}%, ${nxR}% 0%, 100% 0%, 100% 100%, 0% 100%)`
-        : `polygon(0% 0%, ${nxL}% 0%, ${nxL}% ${ny}%, 100% ${ny}%, 100% 100%, 0% 100%)`;
-    } else {
-      el.style.clipPath = '';
+      const nw = (it.notchW != null) ? it.notchW : it.w * 0.5;
+      const legPct = Math.max(15, ((it.w - nw) / it.w) * 100 - 4); // -4% breathing room
+      labelStyle = `style="max-width:${legPct.toFixed(1)}%"`;
     }
     el.innerHTML = `
+      ${renderShapeSVG(it)}
       <div class="rotate-stem"></div>
       <div class="furniture-inner">
-        <span class="label">${escHtml(it.label)}</span>
-        <span class="dims">${ftToInches(it.w)} × ${ftToInches(it.d)}</span>
+        <span class="label" ${labelStyle}>${escHtml(it.label)}</span>
+        <span class="dims" ${labelStyle}>${ftToInches(it.w)} × ${ftToInches(it.d)}</span>
       </div>
       <div class="handle rotate-handle" data-handle="rotate"></div>
       <div class="handle resize-handle" data-handle="resize"></div>
