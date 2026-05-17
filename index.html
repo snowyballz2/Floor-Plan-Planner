@@ -269,6 +269,10 @@
   }
   .canvas-wrapper.measure-mode { cursor: crosshair; }
   .canvas-wrapper.measure-mode .furniture-layer { pointer-events: none; }
+  /* "Show labels" toggle: hides item titles + edge dimension callouts. */
+  body.no-labels .furniture .label,
+  body.no-labels .furniture .dims,
+  body.no-labels .dim-callout { display: none; }
   #measure-toggle.active {
     background: var(--accent);
     color: white;
@@ -613,6 +617,9 @@
     <label class="toggle">
       <input type="checkbox" id="snap-toggle"> Snap 6"
     </label>
+    <label class="toggle">
+      <input type="checkbox" id="labels-toggle" checked> Labels
+    </label>
     <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
   </div>
 
@@ -948,6 +955,7 @@ const PRESETS = [
   { cat: 'Kitchen', label: 'Dishwasher',     w: ft(24), d: ft(24), color: '#e5e7eb' },
   { cat: 'Kitchen', label: 'Microwave',      w: ft(24), d: ft(18), color: '#e5e7eb' },
   { cat: 'Kitchen', label: 'Island',         w: ft(72), d: ft(36), color: '#fef3c7' },
+  { cat: 'Kitchen', label: 'Barstool',       w: ft(15), d: ft(15), color: '#fda4af', shape: 'circle' },
   { cat: 'Kitchen', label: 'Washer',         w: ft(27), d: ft(32), color: '#e5e7eb' },
   { cat: 'Kitchen', label: 'Dryer',          w: ft(27), d: ft(32), color: '#e5e7eb' },
 
@@ -996,6 +1004,7 @@ const state = {
   measurePreview: null,
   sidebarCollapsed: false,
   panelMinimized: false,
+  labelsVisible: true,
 };
 
 // Globally-unique item IDs (random within Number.MAX_SAFE_INTEGER). Avoids
@@ -1037,6 +1046,7 @@ async function save() {
       zoom: state.zoom,
       sidebarCollapsed: state.sidebarCollapsed,
       panelMinimized: state.panelMinimized,
+      labelsVisible: state.labelsVisible,
     };
     if (window.storage && window.storage.set) {
       await window.storage.set(STORAGE_KEY, JSON.stringify(data));
@@ -1070,6 +1080,7 @@ async function load() {
     if (data.zoom) state.zoom = data.zoom;
     if (data.sidebarCollapsed) state.sidebarCollapsed = true;
     if (data.panelMinimized) state.panelMinimized = true;
+    if (data.labelsVisible === false) state.labelsVisible = false;
     // Migration: stamp existing items lacking _ts so sync LWW treats them as
     // "ancient" (any timestamped change overrides them); ensure tombstone maps
     // exist for every floor.
@@ -2243,6 +2254,16 @@ document.getElementById('snap-toggle').addEventListener('change', (e) => {
   state.snap = e.target.checked;
 });
 
+function applyLabelsVisible() {
+  document.body.classList.toggle('no-labels', !state.labelsVisible);
+  document.getElementById('labels-toggle').checked = state.labelsVisible;
+}
+document.getElementById('labels-toggle').addEventListener('change', (e) => {
+  state.labelsVisible = e.target.checked;
+  applyLabelsVisible();
+  scheduleSave();
+});
+
 document.getElementById('clear-floor').addEventListener('click', () => {
   if (!confirm(`Clear all furniture from floor ${state.currentFloor}?`)) return;
   // Tombstone each item so the deletion syncs to other devices.
@@ -2464,6 +2485,7 @@ document.getElementById('sync-clear').addEventListener('click', () => {
   renderSidebar();
   applySidebarCollapsed();
   applyPropsCollapsed();
+  applyLabelsVisible();
   renderFloor();
   setTimeout(() => {
     if (state.zoom === 1.0) {
