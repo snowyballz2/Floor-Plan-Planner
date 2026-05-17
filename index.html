@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Floor Plan — Furniture Planner</title>
+<style>
+  :root {
+    --paper: #f4efe6;
+    --paper-dim: #e8e2d4;
+    --ink: #1a2332;
+    --ink-soft: #4a5568;
+    --ink-faint: #8b95a3;
+    --accent: #0d9488;
+    --accent-soft: #14b8a6;
+    --accent-faint: #ccfbf1;
+    --danger: #dc2626;
+    --warning: #d97706;
+    --border: #c9c2b3;
+    --shadow: 0 1px 3px rgba(26,35,50,0.08), 0 1px 2px rgba(26,35,50,0.04);
+    --shadow-lg: 0 4px 12px rgba(26,35,50,0.12), 0 2px 4px rgba(26,35,50,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+  }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace; }
+
+  header {
+    background: var(--paper);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    z-index: 10;
+  }
+  .floor-tabs { display: flex; gap: 4px; }
+  .floor-tabs button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--ink-soft);
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+  }
+  .floor-tabs button:hover { background: var(--paper-dim); color: var(--ink); }
+  .floor-tabs button.active {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+
+  .controls { display: flex; gap: 8px; align-items: center; }
+  .controls button, .controls select, .controls input[type=text] {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    padding: 6px 10px;
+    font-size: 13px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .controls button:hover { background: var(--paper-dim); }
+  .controls button.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .controls button.primary:hover { background: var(--accent-soft); }
+
+  .zoom-controls { display: flex; align-items: center; gap: 2px; }
+  .zoom-controls button { padding: 4px 10px; min-width: 28px; }
+  .zoom-controls span { padding: 0 8px; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-soft); }
+
+  .toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); cursor: pointer; }
+  .toggle input { cursor: pointer; }
+
+  .header-spacer { flex: 1; }
+
+  main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    width: 240px;
+    background: var(--paper-dim);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 12px;
+    flex-shrink: 0;
+  }
+  .sidebar h3 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 10px 4px 6px;
+    font-weight: 600;
+  }
+  .sidebar h3:first-child { margin-top: 0; }
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .preset-btn {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 11px;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    line-height: 1.3;
+    transition: all 0.1s ease;
+  }
+  .preset-btn:hover { background: var(--accent-faint); border-color: var(--accent); }
+  .preset-btn .dims { display: block; color: var(--ink-faint); font-size: 10px; margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
+
+  .canvas-wrapper {
+    flex: 1;
+    overflow: auto;
+    background: var(--paper);
+    position: relative;
+    padding: 24px;
+  }
+  .canvas-sizer { position: relative; margin: 0 auto; }
+  .canvas {
+    position: relative;
+    transform-origin: top left;
+    background: white;
+    box-shadow: var(--shadow-lg);
+    border-radius: 2px;
+  }
+  .floor-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  .furniture-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .furniture {
+    position: absolute;
+    background: var(--furn-color, #cbd5e1);
+    border: 2px solid rgba(0,0,0,0.45);
+    border-radius: 2px;
+    cursor: move;
+    user-select: none;
+    transform-origin: center;
+    transition: outline 0.1s ease;
+    overflow: hidden;
+  }
+  .furniture.selected {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    z-index: 100;
+  }
+  .furniture-inner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 2px;
+    text-align: center;
+    pointer-events: none;
+  }
+  .furniture.flipped .furniture-inner {
+    transform: scaleX(-1);
+  }
+  .furniture .label {
+    font-size: 10px;
+    font-weight: 500;
+    color: rgba(0,0,0,0.85);
+    line-height: 1.1;
+    text-shadow: 0 0 2px rgba(255,255,255,0.6);
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+  }
+  .furniture .dims {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: rgba(0,0,0,0.55);
+    margin-top: 1px;
+  }
+  .furniture .handle {
+    position: absolute;
+    background: white;
+    border: 1.5px solid var(--accent);
+    box-sizing: border-box;
+    display: none;
+    z-index: 10;
+  }
+  .furniture.selected .handle { display: block; }
+  .rotate-handle {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: grab;
+  }
+  .rotate-handle:active { cursor: grabbing; }
+  .rotate-stem {
+    position: absolute;
+    width: 1.5px;
+    background: var(--accent);
+    top: -22px;
+    left: 50%;
+    height: 22px;
+    transform: translateX(-50%);
+    display: none;
+    pointer-events: none;
+  }
+  .furniture.selected .rotate-stem { display: block; }
+  .resize-handle {
+    width: 10px;
+    height: 10px;
+    bottom: -6px;
+    right: -6px;
+    cursor: nwse-resize;
+    border-radius: 1px;
+  }
+
+  .properties {
+    width: 240px;
+    background: var(--paper-dim);
+    border-left: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .properties h3 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--ink);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .properties .empty {
+    color: var(--ink-faint);
+    font-size: 12px;
+    text-align: center;
+    padding: 24px 8px;
+    line-height: 1.6;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 12px;
+  }
+  .field label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .field input, .field select {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    padding: 6px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .field input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .color-swatches {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .swatch {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 4px;
+    border: 1.5px solid var(--border);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+  }
+  .swatch:hover { transform: scale(1.1); }
+  .swatch.active { border-color: var(--ink); transform: scale(1.1); box-shadow: 0 0 0 2px var(--paper); }
+
+  .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+  .action-row button {
+    padding: 6px 8px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .action-row button:hover { background: var(--paper); border-color: var(--ink-soft); }
+  .action-row button.danger { color: var(--danger); border-color: rgba(220,38,38,0.3); }
+  .action-row button.danger:hover { background: rgba(220,38,38,0.05); border-color: var(--danger); }
+
+  .modal-bg {
+    position: fixed;
+    inset: 0;
+    background: rgba(26,35,50,0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--paper);
+    border-radius: 8px;
+    padding: 20px;
+    width: 320px;
+    box-shadow: var(--shadow-lg);
+  }
+  .modal h2 {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  .modal .actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+  .modal button {
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    background: var(--paper);
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .modal button.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .status {
+    background: var(--paper-dim);
+    border-top: 1px solid var(--border);
+    padding: 4px 16px;
+    font-size: 11px;
+    color: var(--ink-faint);
+    display: flex;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .status .mono { color: var(--ink-soft); }
+
+  kbd {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="floor-tabs" id="floor-tabs">
+    <button data-floor="1" class="active">1st Floor</button>
+    <button data-floor="2">2nd Floor</button>
+    <button data-floor="3">3rd Floor</button>
+    <button data-floor="4">4th Floor</button>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="add-custom-btn">+ Add Custom</button>
+    <div class="zoom-controls">
+      <button id="zoom-out">−</button>
+      <span id="zoom-level">100%</span>
+      <button id="zoom-in">+</button>
+      <button id="zoom-fit" title="Fit to window">⊟</button>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="snap-toggle"> Snap 6"
+    </label>
+  </div>
+
+  <div class="header-spacer"></div>
+  <button id="clear-floor" style="background:transparent;border:1px solid var(--border);color:var(--danger);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">Clear floor</button>
+</header>
+
+<main>
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <div class="canvas-wrapper" id="canvas-wrapper">
+    <div class="canvas-sizer" id="canvas-sizer">
+      <div class="canvas" id="canvas">
+        <img class="floor-image" id="floor-image" src="floor1.png" alt="Floor 1">
+        <div class="furniture-layer" id="furniture-layer"></div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="properties" id="properties">
+    <h3>Properties</h3>
+    <div class="empty" id="prop-empty">
+      Click a furniture item to edit.<br><br>
+      <kbd>R</kbd> rotate · <kbd>F</kbd> flip · <kbd>⌫</kbd> delete · <kbd>⌘D</kbd> duplicate · <kbd>↑↓←→</kbd> nudge
+    </div>
+    <div id="prop-form" style="display:none;">
+      <div class="field">
+        <label>Label</label>
+        <input type="text" id="prop-label" style="font-family:inherit;">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Width (ft)</label>
+          <input type="number" id="prop-w" step="0.25" min="0.25">
+        </div>
+        <div class="field">
+          <label>Depth (ft)</label>
+          <input type="number" id="prop-d" step="0.25" min="0.25">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>X (ft)</label>
+          <input type="number" id="prop-x" step="0.25">
+        </div>
+        <div class="field">
+          <label>Y (ft)</label>
+          <input type="number" id="prop-y" step="0.25">
+        </div>
+      </div>
+      <div class="field">
+        <label>Rotation</label>
+        <input type="number" id="prop-rot" step="15">
+      </div>
+      <div class="field">
+        <label>Color</label>
+        <div class="color-swatches" id="color-swatches"></div>
+      </div>
+      <div class="action-row">
+        <button id="prop-flip-btn">Flip H</button>
+        <button id="prop-dup-btn">Duplicate</button>
+      </div>
+      <div class="action-row">
+        <button class="danger" id="prop-delete-btn" style="grid-column:span 2;">Delete</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div class="status">
+  <span>Floor <span id="status-floor">1</span></span>
+  <span class="mono">Scale: <span id="status-scale">23.48</span> px / ft</span>
+  <span class="mono"><span id="status-count">0</span> items</span>
+  <span style="margin-left:auto;font-size:10px;color:var(--ink-faint);">Real MLS plans · double-click an item to rename</span>
+</div>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <h2>Add Custom Furniture</h2>
+    <div class="field">
+      <label>Label</label>
+      <input type="text" id="custom-label" placeholder="e.g. Roguey's bed" style="font-family:inherit;">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Width (ft)</label>
+        <input type="number" id="custom-w" value="3" step="0.25" min="0.25">
+      </div>
+      <div class="field">
+        <label>Depth (ft)</label>
+        <input type="number" id="custom-d" value="2" step="0.25" min="0.25">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="custom-cancel">Cancel</button>
+      <button class="primary" id="custom-ok">Add</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ============================================================
+// CALIBRATION
+// ============================================================
+// All 4 floor images were processed identically:
+//   - Red border removed (replaced with white)
+//   - "bright MLS" watermark erased
+//   - Cropped to building bbox + 30 px margin on all sides
+// PER-FLOOR CALIBRATION — each floor is at its own scale.
+// pxPerFt measured inside-face-to-inside-face from a labeled room (walls are drawn,
+// labels are interior dimensions). offsetX/offsetY = inside NW corner of building
+// exterior walls in cropped image, so furniture at (0,0) ft sits in the building's
+// interior NW corner.
+//   Floor 1: Rec Room interior width 452 px = 19'3"  → 23.48 px/ft
+//   Floor 2: Storage interior width  301 px = 15'3"  → 19.74 px/ft
+//   Floor 3: Bottom Bedroom width    420 px = 19'3"  → 21.82 px/ft
+//   Floor 4: Primary Bedroom width   245 px = 12'5"  → 19.74 px/ft  (cross-checked
+//            by bottom Bedroom 237 px = 12'0" → 19.75, and Hall 4'0" → 79 px ✓)
+const FLOORS = {
+  1: { src: 'floor1.png', w: 662, h: 860, pxPerFt: 23.48, offsetX: 92,  offsetY: 50 },
+  2: { src: 'floor2.png', w: 983, h: 861, pxPerFt: 19.74, offsetX: 106, offsetY: 48 },
+  3: { src: 'floor3.png', w: 582, h: 860, pxPerFt: 21.82, offsetX: 50,  offsetY: 48 },
+  4: { src: 'floor4.png', w: 638, h: 860, pxPerFt: 19.74, offsetX: 159, offsetY: 48 },
+};
+
+// ============================================================
+// FURNITURE PRESETS — dimensions in feet
+// ============================================================
+const ft = (i) => +(i / 12).toFixed(3);
+const PRESETS = [
+  { cat: 'Bedroom', label: 'King Bed',       w: ft(76), d: ft(80), color: '#fde68a' },
+  { cat: 'Bedroom', label: 'Queen Bed',      w: ft(60), d: ft(80), color: '#fde68a' },
+  { cat: 'Bedroom', label: 'Full Bed',       w: ft(54), d: ft(75), color: '#fde68a' },
+  { cat: 'Bedroom', label: 'Twin Bed',       w: ft(38), d: ft(75), color: '#fde68a' },
+  { cat: 'Bedroom', label: 'Nightstand',     w: ft(22), d: ft(18), color: '#fed7aa' },
+  { cat: 'Bedroom', label: 'Dresser',        w: ft(60), d: ft(18), color: '#fed7aa' },
+  { cat: 'Bedroom', label: 'Wardrobe',       w: ft(60), d: ft(24), color: '#fed7aa' },
+  { cat: 'Bedroom', label: 'Crib',           w: ft(54), d: ft(30), color: '#fde68a' },
+
+  { cat: 'Living',  label: 'Sofa 3-seat',    w: ft(84), d: ft(36), color: '#bae6fd' },
+  { cat: 'Living',  label: 'Sofa 2-seat',    w: ft(60), d: ft(36), color: '#bae6fd' },
+  { cat: 'Living',  label: 'Sectional L',    w: ft(112), d: ft(84), color: '#bae6fd' },
+  { cat: 'Living',  label: 'Armchair',       w: ft(35), d: ft(35), color: '#a5f3fc' },
+  { cat: 'Living',  label: 'Recliner',       w: ft(36), d: ft(40), color: '#a5f3fc' },
+  { cat: 'Living',  label: 'Coffee Table',   w: ft(48), d: ft(24), color: '#d4d4d8' },
+  { cat: 'Living',  label: 'Side Table',     w: ft(22), d: ft(22), color: '#d4d4d8' },
+  { cat: 'Living',  label: 'TV Stand',       w: ft(60), d: ft(16), color: '#52525b' },
+  { cat: 'Living',  label: 'Bookshelf',      w: ft(36), d: ft(12), color: '#92400e' },
+  { cat: 'Living',  label: 'Piano upright',  w: ft(58), d: ft(24), color: '#1f2937' },
+
+  { cat: 'Dining',  label: 'Table 4',        w: ft(48), d: ft(36), color: '#fecaca' },
+  { cat: 'Dining',  label: 'Table 6',        w: ft(72), d: ft(36), color: '#fecaca' },
+  { cat: 'Dining',  label: 'Table 8',        w: ft(96), d: ft(40), color: '#fecaca' },
+  { cat: 'Dining',  label: 'Round Table',    w: ft(48), d: ft(48), color: '#fecaca' },
+  { cat: 'Dining',  label: 'Chair',          w: ft(18), d: ft(18), color: '#fda4af' },
+  { cat: 'Dining',  label: 'Buffet',         w: ft(60), d: ft(20), color: '#fda4af' },
+
+  { cat: 'Office',  label: 'Desk',           w: ft(60), d: ft(24), color: '#ddd6fe' },
+  { cat: 'Office',  label: 'Desk L-shape',   w: ft(66), d: ft(66), color: '#ddd6fe' },
+  { cat: 'Office',  label: 'Office Chair',   w: ft(24), d: ft(24), color: '#c4b5fd' },
+  { cat: 'Office',  label: 'Filing Cabinet', w: ft(15), d: ft(20), color: '#a78bfa' },
+
+  { cat: 'Kitchen', label: 'Fridge',         w: ft(36), d: ft(32), color: '#e5e7eb' },
+  { cat: 'Kitchen', label: 'Range/Stove',    w: ft(30), d: ft(26), color: '#e5e7eb' },
+  { cat: 'Kitchen', label: 'Dishwasher',     w: ft(24), d: ft(24), color: '#e5e7eb' },
+  { cat: 'Kitchen', label: 'Microwave',      w: ft(24), d: ft(18), color: '#e5e7eb' },
+  { cat: 'Kitchen', label: 'Island',         w: ft(72), d: ft(36), color: '#fef3c7' },
+  { cat: 'Kitchen', label: 'Washer',         w: ft(27), d: ft(32), color: '#e5e7eb' },
+  { cat: 'Kitchen', label: 'Dryer',          w: ft(27), d: ft(32), color: '#e5e7eb' },
+
+  { cat: 'Bath',    label: 'Toilet',         w: ft(20), d: ft(28), color: '#e0f2fe' },
+  { cat: 'Bath',    label: 'Vanity (1)',     w: ft(36), d: ft(21), color: '#e0f2fe' },
+  { cat: 'Bath',    label: 'Vanity (2)',     w: ft(60), d: ft(21), color: '#e0f2fe' },
+  { cat: 'Bath',    label: 'Tub',            w: ft(60), d: ft(32), color: '#bfdbfe' },
+  { cat: 'Bath',    label: 'Shower',         w: ft(36), d: ft(36), color: '#bfdbfe' },
+
+  { cat: 'Misc',    label: 'Plant',          w: 1.5, d: 1.5, color: '#86efac' },
+  { cat: 'Misc',    label: 'Rug 5×8',        w: 5, d: 8, color: 'rgba(180,140,90,0.3)' },
+  { cat: 'Misc',    label: 'Rug 8×10',       w: 8, d: 10, color: 'rgba(180,140,90,0.3)' },
+  { cat: 'Misc',    label: "Roguey's bed",   w: 3, d: 2, color: '#fcd34d' },
+];
+
+const COLORS = [
+  '#fde68a', '#fed7aa', '#fca5a5', '#fda4af',
+  '#bae6fd', '#a5f3fc', '#86efac', '#c4b5fd',
+  '#ddd6fe', '#f9a8d4', '#e5e7eb', '#52525b'
+];
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  currentFloor: 1,
+  zoom: 1.0,
+  snap: false,
+  furniture: { 1: [], 2: [], 3: [], 4: [] },
+  selectedId: null,
+};
+let nextId = 1;
+
+// ============================================================
+// STORAGE
+// ============================================================
+const STORAGE_KEY = 'floorplan-v2';
+let saveTimer = null;
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 250);
+}
+async function save() {
+  try {
+    const data = {
+      furniture: state.furniture,
+      nextId,
+      currentFloor: state.currentFloor,
+      zoom: state.zoom,
+    };
+    if (window.storage && window.storage.set) {
+      await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+    } else {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+    }
+  } catch (e) { console.warn('Save failed:', e); }
+}
+async function load() {
+  try {
+    let raw = null;
+    if (window.storage && window.storage.get) {
+      try {
+        const r = await window.storage.get(STORAGE_KEY);
+        raw = r ? r.value : null;
+      } catch(e) { raw = null; }
+    }
+    if (!raw) {
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch(e) {}
+    }
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.furniture) state.furniture = data.furniture;
+    if (data.nextId) nextId = data.nextId;
+    if (data.currentFloor) state.currentFloor = data.currentFloor;
+    if (data.zoom) state.zoom = data.zoom;
+  } catch (e) { console.warn('Load failed:', e); }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function ftToInches(ft) {
+  const feet = Math.floor(ft);
+  const inches = Math.round((ft - feet) * 12);
+  if (inches === 0) return `${feet}'`;
+  if (inches === 12) return `${feet+1}'`;
+  return `${feet}'${inches}"`;
+}
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function currentItems() { return state.furniture[state.currentFloor]; }
+function findItem(id) { return currentItems().find(it => it.id === id); }
+
+// ============================================================
+// RENDER
+// ============================================================
+const els = {
+  canvas: document.getElementById('canvas'),
+  canvasSizer: document.getElementById('canvas-sizer'),
+  floorImage: document.getElementById('floor-image'),
+  furnitureLayer: document.getElementById('furniture-layer'),
+  zoomLevel: document.getElementById('zoom-level'),
+  statusFloor: document.getElementById('status-floor'),
+  statusScale: document.getElementById('status-scale'),
+  statusCount: document.getElementById('status-count'),
+};
+
+function renderFloor() {
+  const f = FLOORS[state.currentFloor];
+  els.floorImage.src = f.src;
+  els.canvas.style.width = f.w + 'px';
+  els.canvas.style.height = f.h + 'px';
+  els.canvas.style.transform = `scale(${state.zoom})`;
+  els.canvasSizer.style.width = (f.w * state.zoom) + 'px';
+  els.canvasSizer.style.height = (f.h * state.zoom) + 'px';
+  els.statusFloor.textContent = state.currentFloor;
+  els.statusScale.textContent = f.pxPerFt.toFixed(2);
+  els.zoomLevel.textContent = Math.round(state.zoom * 100) + '%';
+
+  document.querySelectorAll('.floor-tabs button').forEach(b => {
+    b.classList.toggle('active', +b.dataset.floor === state.currentFloor);
+  });
+
+  renderFurniture();
+}
+
+function renderFurniture() {
+  const items = currentItems();
+  const f = FLOORS[state.currentFloor];
+  els.furnitureLayer.innerHTML = '';
+  for (const it of items) {
+    const el = document.createElement('div');
+    el.className = 'furniture' + (it.flipH ? ' flipped' : '') + (it.id === state.selectedId ? ' selected' : '');
+    el.dataset.id = it.id;
+    el.style.left = (f.offsetX + it.x * f.pxPerFt) + 'px';
+    el.style.top = (f.offsetY + it.y * f.pxPerFt) + 'px';
+    el.style.width = (it.w * f.pxPerFt) + 'px';
+    el.style.height = (it.d * f.pxPerFt) + 'px';
+    el.style.setProperty('--furn-color', it.color);
+    el.style.background = it.color;
+    el.style.transform = `rotate(${it.rot}deg)`;
+    el.innerHTML = `
+      <div class="rotate-stem"></div>
+      <div class="furniture-inner">
+        <span class="label">${escHtml(it.label)}</span>
+        <span class="dims">${ftToInches(it.w)} × ${ftToInches(it.d)}</span>
+      </div>
+      <div class="handle rotate-handle" data-handle="rotate"></div>
+      <div class="handle resize-handle" data-handle="resize"></div>
+    `;
+    els.furnitureLayer.appendChild(el);
+  }
+  els.statusCount.textContent = items.length;
+  renderProperties();
+}
+
+function renderProperties() {
+  const it = findItem(state.selectedId);
+  const empty = document.getElementById('prop-empty');
+  const form = document.getElementById('prop-form');
+  if (!it) {
+    empty.style.display = '';
+    form.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  form.style.display = '';
+  document.getElementById('prop-label').value = it.label;
+  document.getElementById('prop-w').value = it.w;
+  document.getElementById('prop-d').value = it.d;
+  document.getElementById('prop-x').value = it.x.toFixed(2);
+  document.getElementById('prop-y').value = it.y.toFixed(2);
+  document.getElementById('prop-rot').value = it.rot;
+
+  const swatches = document.getElementById('color-swatches');
+  swatches.innerHTML = '';
+  for (const c of COLORS) {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (c === it.color ? ' active' : '');
+    s.style.background = c;
+    s.title = c;
+    s.addEventListener('click', () => {
+      it.color = c;
+      renderFurniture();
+      scheduleSave();
+    });
+    swatches.appendChild(s);
+  }
+}
+
+// ============================================================
+// SIDEBAR
+// ============================================================
+function renderSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.innerHTML = '';
+  const byCat = {};
+  for (const p of PRESETS) {
+    (byCat[p.cat] = byCat[p.cat] || []).push(p);
+  }
+  for (const cat of Object.keys(byCat)) {
+    const h = document.createElement('h3');
+    h.textContent = cat;
+    sidebar.appendChild(h);
+    const grid = document.createElement('div');
+    grid.className = 'preset-grid';
+    for (const p of byCat[cat]) {
+      const btn = document.createElement('button');
+      btn.className = 'preset-btn';
+      btn.innerHTML = `${escHtml(p.label)}<span class="dims">${ftToInches(p.w)} × ${ftToInches(p.d)}</span>`;
+      btn.addEventListener('click', () => addItem({ ...p }));
+      grid.appendChild(btn);
+    }
+    sidebar.appendChild(grid);
+  }
+}
+
+// ============================================================
+// ITEM OPERATIONS
+// ============================================================
+function addItem(preset) {
+  const items = currentItems();
+  const cascade = (items.length % 8) * 0.5;
+  const item = {
+    id: nextId++,
+    label: preset.label,
+    w: preset.w,
+    d: preset.d,
+    x: 2 + cascade,
+    y: 2 + cascade,
+    rot: 0,
+    flipH: false,
+    color: preset.color || '#cbd5e1',
+  };
+  items.push(item);
+  state.selectedId = item.id;
+  renderFurniture();
+  scheduleSave();
+}
+
+function deleteItem(id) {
+  const items = currentItems();
+  const idx = items.findIndex(i => i.id === id);
+  if (idx >= 0) {
+    items.splice(idx, 1);
+    if (state.selectedId === id) state.selectedId = null;
+    renderFurniture();
+    scheduleSave();
+  }
+}
+
+function duplicateItem(id) {
+  const it = findItem(id);
+  if (!it) return;
+  const copy = { ...it, id: nextId++, x: it.x + 0.5, y: it.y + 0.5 };
+  currentItems().push(copy);
+  state.selectedId = copy.id;
+  renderFurniture();
+  scheduleSave();
+}
+
+function flipItem(id) {
+  const it = findItem(id);
+  if (!it) return;
+  it.flipH = !it.flipH;
+  renderFurniture();
+  scheduleSave();
+}
+
+// ============================================================
+// INTERACTIONS
+// ============================================================
+let drag = null;
+
+function getMouseFt(e, rect) {
+  const f = FLOORS[state.currentFloor];
+  const px_x = (e.clientX - rect.left) / state.zoom - f.offsetX;
+  const px_y = (e.clientY - rect.top) / state.zoom - f.offsetY;
+  return { x: px_x / f.pxPerFt, y: px_y / f.pxPerFt };
+}
+
+els.furnitureLayer.addEventListener('pointerdown', (e) => {
+  const target = e.target.closest('.furniture');
+  if (!target) return;
+  const id = +target.dataset.id;
+  const it = findItem(id);
+  if (!it) return;
+  state.selectedId = id;
+  renderFurniture();
+
+  const handleType = e.target.dataset.handle;
+  const rect = els.canvas.getBoundingClientRect();
+  const startFt = getMouseFt(e, rect);
+
+  if (handleType === 'rotate') {
+    drag = {
+      type: 'rotate',
+      id,
+      cx: it.x + it.w / 2,
+      cy: it.y + it.d / 2,
+      startRot: it.rot,
+      startMouse: startFt,
+    };
+  } else if (handleType === 'resize') {
+    drag = {
+      type: 'resize',
+      id,
+      startW: it.w,
+      startD: it.d,
+      startMouse: startFt,
+    };
+  } else {
+    drag = {
+      type: 'move',
+      id,
+      startX: it.x,
+      startY: it.y,
+      startMouse: startFt,
+    };
+  }
+  e.target.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+els.furnitureLayer.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const it = findItem(drag.id);
+  if (!it) return;
+  const rect = els.canvas.getBoundingClientRect();
+  const ft = getMouseFt(e, rect);
+
+  if (drag.type === 'move') {
+    let nx = drag.startX + (ft.x - drag.startMouse.x);
+    let ny = drag.startY + (ft.y - drag.startMouse.y);
+    if (state.snap) {
+      nx = Math.round(nx * 2) / 2;
+      ny = Math.round(ny * 2) / 2;
+    }
+    it.x = nx;
+    it.y = ny;
+  } else if (drag.type === 'rotate') {
+    const dx = ft.x - drag.cx;
+    const dy = ft.y - drag.cy;
+    let angle = Math.atan2(dx, -dy) * 180 / Math.PI;
+    if (state.snap || e.shiftKey) angle = Math.round(angle / 15) * 15;
+    else angle = Math.round(angle);
+    it.rot = angle;
+  } else if (drag.type === 'resize') {
+    let nw = drag.startW + (ft.x - drag.startMouse.x);
+    let nd = drag.startD + (ft.y - drag.startMouse.y);
+    if (state.snap) {
+      nw = Math.max(0.25, Math.round(nw * 2) / 2);
+      nd = Math.max(0.25, Math.round(nd * 2) / 2);
+    } else {
+      nw = Math.max(0.25, +nw.toFixed(2));
+      nd = Math.max(0.25, +nd.toFixed(2));
+    }
+    it.w = nw;
+    it.d = nd;
+  }
+  renderFurniture();
+});
+
+els.furnitureLayer.addEventListener('pointerup', () => {
+  if (drag) {
+    drag = null;
+    scheduleSave();
+  }
+});
+els.furnitureLayer.addEventListener('pointercancel', () => {
+  if (drag) { drag = null; scheduleSave(); }
+});
+
+els.furnitureLayer.addEventListener('dblclick', (e) => {
+  const target = e.target.closest('.furniture');
+  if (!target) return;
+  const id = +target.dataset.id;
+  const it = findItem(id);
+  if (!it) return;
+  const newLabel = prompt('Label:', it.label);
+  if (newLabel !== null && newLabel.trim()) {
+    it.label = newLabel.trim();
+    renderFurniture();
+    scheduleSave();
+  }
+});
+
+els.canvas.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('.furniture')) {
+    state.selectedId = null;
+    renderFurniture();
+  }
+});
+
+// ============================================================
+// PROPERTY PANEL BINDINGS
+// ============================================================
+function bindProp(id, key, parse) {
+  document.getElementById(id).addEventListener('input', (e) => {
+    const it = findItem(state.selectedId);
+    if (!it) return;
+    const v = parse ? parse(e.target.value) : e.target.value;
+    if (v === null || Number.isNaN(v)) return;
+    it[key] = v;
+    renderFurniture();
+    scheduleSave();
+  });
+}
+bindProp('prop-label', 'label');
+bindProp('prop-w', 'w', v => Math.max(0.25, parseFloat(v) || 0));
+bindProp('prop-d', 'd', v => Math.max(0.25, parseFloat(v) || 0));
+bindProp('prop-x', 'x', v => parseFloat(v) || 0);
+bindProp('prop-y', 'y', v => parseFloat(v) || 0);
+bindProp('prop-rot', 'rot', v => parseFloat(v) || 0);
+
+document.getElementById('prop-flip-btn').addEventListener('click', () => state.selectedId && flipItem(state.selectedId));
+document.getElementById('prop-dup-btn').addEventListener('click', () => state.selectedId && duplicateItem(state.selectedId));
+document.getElementById('prop-delete-btn').addEventListener('click', () => state.selectedId && deleteItem(state.selectedId));
+
+// ============================================================
+// KEYBOARD
+// ============================================================
+window.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, select, textarea')) return;
+  const id = state.selectedId;
+  const it = findItem(id);
+  if (!it) {
+    if (e.key === 'Escape') { state.selectedId = null; renderFurniture(); }
+    return;
+  }
+  const step = e.shiftKey ? 1 : (state.snap ? 0.5 : 0.25);
+  switch (e.key) {
+    case 'ArrowLeft':  it.x -= step; renderFurniture(); scheduleSave(); e.preventDefault(); break;
+    case 'ArrowRight': it.x += step; renderFurniture(); scheduleSave(); e.preventDefault(); break;
+    case 'ArrowUp':    it.y -= step; renderFurniture(); scheduleSave(); e.preventDefault(); break;
+    case 'ArrowDown':  it.y += step; renderFurniture(); scheduleSave(); e.preventDefault(); break;
+    case 'r': case 'R':
+      it.rot = (it.rot + (e.shiftKey ? -15 : 15)) % 360;
+      renderFurniture(); scheduleSave();
+      break;
+    case 'f': case 'F':
+      flipItem(id);
+      break;
+    case 'd': case 'D':
+      if (e.metaKey || e.ctrlKey) {
+        duplicateItem(id);
+        e.preventDefault();
+      }
+      break;
+    case 'Delete': case 'Backspace':
+      deleteItem(id);
+      e.preventDefault();
+      break;
+    case 'Escape':
+      state.selectedId = null;
+      renderFurniture();
+      break;
+  }
+});
+
+// ============================================================
+// FLOOR SWITCHING, ZOOM, SNAP
+// ============================================================
+document.querySelectorAll('.floor-tabs button').forEach(b => {
+  b.addEventListener('click', () => {
+    state.currentFloor = +b.dataset.floor;
+    state.selectedId = null;
+    renderFloor();
+    scheduleSave();
+  });
+});
+
+document.getElementById('zoom-in').addEventListener('click', () => {
+  state.zoom = Math.min(3, state.zoom * 1.2);
+  renderFloor();
+  scheduleSave();
+});
+document.getElementById('zoom-out').addEventListener('click', () => {
+  state.zoom = Math.max(0.3, state.zoom / 1.2);
+  renderFloor();
+  scheduleSave();
+});
+document.getElementById('zoom-fit').addEventListener('click', () => {
+  const f = FLOORS[state.currentFloor];
+  const wrap = document.getElementById('canvas-wrapper');
+  const padding = 48;
+  const availW = wrap.clientWidth - padding;
+  const availH = wrap.clientHeight - padding;
+  state.zoom = Math.min(availW / f.w, availH / f.h);
+  renderFloor();
+  scheduleSave();
+});
+
+document.getElementById('snap-toggle').addEventListener('change', (e) => {
+  state.snap = e.target.checked;
+});
+
+document.getElementById('clear-floor').addEventListener('click', () => {
+  if (!confirm(`Clear all furniture from floor ${state.currentFloor}?`)) return;
+  state.furniture[state.currentFloor] = [];
+  state.selectedId = null;
+  renderFurniture();
+  scheduleSave();
+});
+
+// ============================================================
+// CUSTOM ADD MODAL
+// ============================================================
+const modalBg = document.getElementById('modal-bg');
+document.getElementById('add-custom-btn').addEventListener('click', () => {
+  document.getElementById('custom-label').value = '';
+  document.getElementById('custom-w').value = 3;
+  document.getElementById('custom-d').value = 2;
+  modalBg.classList.add('open');
+  setTimeout(() => document.getElementById('custom-label').focus(), 0);
+});
+document.getElementById('custom-cancel').addEventListener('click', () => modalBg.classList.remove('open'));
+modalBg.addEventListener('click', (e) => { if (e.target === modalBg) modalBg.classList.remove('open'); });
+function doCustomAdd() {
+  const label = document.getElementById('custom-label').value.trim() || 'Item';
+  const w = Math.max(0.25, parseFloat(document.getElementById('custom-w').value) || 1);
+  const d = Math.max(0.25, parseFloat(document.getElementById('custom-d').value) || 1);
+  addItem({ label, w, d, color: '#cbd5e1' });
+  modalBg.classList.remove('open');
+}
+document.getElementById('custom-ok').addEventListener('click', doCustomAdd);
+document.getElementById('custom-label').addEventListener('keydown', (e) => { if (e.key === 'Enter') doCustomAdd(); });
+
+// ============================================================
+// INIT
+// ============================================================
+(async function init() {
+  await load();
+  renderSidebar();
+  renderFloor();
+  setTimeout(() => {
+    if (state.zoom === 1.0) {
+      const f = FLOORS[state.currentFloor];
+      const wrap = document.getElementById('canvas-wrapper');
+      const padding = 48;
+      const availW = wrap.clientWidth - padding;
+      const availH = wrap.clientHeight - padding;
+      const fit = Math.min(availW / f.w, availH / f.h, 1.5);
+      if (fit > 0.4 && fit < 1.2) {
+        state.zoom = fit;
+        renderFloor();
+      }
+    }
+  }, 100);
+})();
+</script>
+</body>
+</html>
