@@ -699,6 +699,15 @@
           <label>Move to floor</label>
           <div id="move-floor-row" style="display:grid;gap:4px;"></div>
         </div>
+        <div class="field">
+          <label>Stack order</label>
+          <div class="action-row" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+            <button id="prop-back-btn"  title="Send to back">⏬</button>
+            <button id="prop-bwd-btn"   title="Send backward">↓</button>
+            <button id="prop-fwd-btn"   title="Bring forward">↑</button>
+            <button id="prop-front-btn" title="Bring to front">⏫</button>
+          </div>
+        </div>
         <div class="action-row">
           <button id="prop-flip-btn">Flip H</button>
           <button id="prop-dup-btn">Duplicate</button>
@@ -916,7 +925,9 @@ const PRESETS = [
   { cat: 'Living',  label: 'Recliner',       w: ft(36), d: ft(40), color: '#a5f3fc' },
   { cat: 'Living',  label: 'Coffee Table',   w: ft(48), d: ft(24), color: '#d4d4d8' },
   { cat: 'Living',  label: 'Side Table',     w: ft(22), d: ft(22), color: '#d4d4d8' },
+  { cat: 'Living',  label: 'Side Table Rd',  w: ft(22), d: ft(22), color: '#d4d4d8', shape: 'circle' },
   { cat: 'Living',  label: 'TV Stand',       w: ft(60), d: ft(16), color: '#52525b' },
+  { cat: 'Living',  label: 'Wall TV 65"',    w: ft(57), d: ft(3),  color: '#0f172a' },
   { cat: 'Living',  label: 'Bookshelf',      w: ft(36), d: ft(12), color: '#92400e' },
   { cat: 'Living',  label: 'Piano upright',  w: ft(58), d: ft(24), color: '#1f2937' },
 
@@ -1770,6 +1781,24 @@ function flipItem(id) {
   scheduleSave();
 }
 
+// Stacking order: items render in array order; later index = drawn on top.
+// direction: 'front' | 'forward' | 'backward' | 'back'.
+function reorderItem(id, direction) {
+  const items = currentItems();
+  const idx = items.findIndex(it => it.id === id);
+  if (idx < 0) return;
+  const [item] = items.splice(idx, 1);
+  let newIdx;
+  if (direction === 'front')         newIdx = items.length;
+  else if (direction === 'back')     newIdx = 0;
+  else if (direction === 'forward')  newIdx = Math.min(items.length, idx + 1);
+  else /* backward */                newIdx = Math.max(0, idx - 1);
+  items.splice(newIdx, 0, item);
+  touch(item);
+  renderFurniture();
+  scheduleSave();
+}
+
 // ============================================================
 // INTERACTIONS
 // ============================================================
@@ -2115,6 +2144,10 @@ document.querySelectorAll('input[type="number"], input[type="text"]').forEach(in
 
 document.getElementById('prop-flip-btn').addEventListener('click', () => state.selectedId && flipItem(state.selectedId));
 document.getElementById('prop-dup-btn').addEventListener('click', () => state.selectedId && duplicateItem(state.selectedId));
+document.getElementById('prop-back-btn' ).addEventListener('click', () => state.selectedId && reorderItem(state.selectedId, 'back'));
+document.getElementById('prop-bwd-btn'  ).addEventListener('click', () => state.selectedId && reorderItem(state.selectedId, 'backward'));
+document.getElementById('prop-fwd-btn'  ).addEventListener('click', () => state.selectedId && reorderItem(state.selectedId, 'forward'));
+document.getElementById('prop-front-btn').addEventListener('click', () => state.selectedId && reorderItem(state.selectedId, 'front'));
 document.getElementById('prop-delete-btn').addEventListener('click', () => state.selectedId && deleteItem(state.selectedId));
 
 // ============================================================
