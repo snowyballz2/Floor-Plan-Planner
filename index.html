@@ -552,6 +552,10 @@
   </div>
 
   <div class="header-spacer"></div>
+  <button id="sync-open-btn" title="Cloud sync" style="background:transparent;border:1px solid var(--border);color:var(--ink-soft);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;">
+    <span id="sync-btn-icon">↻</span>
+    <span id="sync-btn-status" style="font-size:11px;color:var(--ink-faint);"></span>
+  </button>
   <button id="clear-floor" style="background:transparent;border:1px solid var(--border);color:var(--danger);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">Clear floor</button>
 </header>
 
@@ -668,6 +672,37 @@
   </div>
 </div>
 
+<div class="modal-bg" id="sync-modal-bg">
+  <div class="modal" style="width:380px;">
+    <h2>Cloud Sync</h2>
+    <p style="font-size:11px;color:var(--ink-faint);margin-bottom:14px;line-height:1.5;">
+      Share floor plans across devices via a private GitHub Gist. Same Gist ID
+      on every device. Changes merge by per-item timestamp; deletions on one
+      device propagate to others.
+      <br><br>
+      <a href="https://github.com/settings/tokens?type=beta" target="_blank" style="color:var(--accent);">Create a fine-grained token</a>
+      with <em>Gists: Read &amp; Write</em>. Token lives in localStorage on this device only.
+    </p>
+    <div class="field">
+      <label>Gist ID</label>
+      <input type="text" id="sync-gist-id" placeholder="e.g. 8f3a7c…" style="font-family:'JetBrains Mono',monospace;">
+    </div>
+    <div class="field">
+      <label>GitHub Token</label>
+      <input type="password" id="sync-token-input" placeholder="ghp_… or github_pat_…" style="font-family:'JetBrains Mono',monospace;">
+    </div>
+    <div class="field">
+      <label>Status</label>
+      <div id="sync-status" style="font-size:11px;color:var(--ink-faint);font-family:'JetBrains Mono',monospace;min-height:14px;">Not configured</div>
+    </div>
+    <div class="actions">
+      <button id="sync-clear" style="color:var(--danger);border-color:rgba(220,38,38,0.3);margin-right:auto;">Clear creds</button>
+      <button id="sync-close">Close</button>
+      <button class="primary" id="sync-now">Save &amp; Sync</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -766,11 +801,27 @@ const state = {
   zoom: 1.0,
   snap: false,
   furniture: { 1: [], 2: [], 3: [], 4: [] },
+  // Tombstone map per floor: { [itemId]: deletionTimestamp }. Required so
+  // a deletion on one device propagates to another device that still has the
+  // item locally.
+  deletedItems: { 1: {}, 2: {}, 3: {}, 4: {} },
   selectedId: null,
   sidebarCollapsed: false,
   panelMinimized: false,
 };
-let nextId = 1;
+
+// Globally-unique item IDs (random within Number.MAX_SAFE_INTEGER). Avoids
+// collisions across devices — two devices generating IDs independently won't
+// clash thanks to the 9e15 keyspace.
+function genId() { return Math.floor(Math.random() * 9e15); }
+// Stamp a "last modified" timestamp. Called on every mutation that needs to
+// propagate via sync (LWW resolves conflicts by max _ts).
+function touch(it) { if (it) it._ts = Date.now(); }
+// Tombstone an item id for the current floor.
+function tombstone(floor, id) {
+  if (!state.deletedItems[floor]) state.deletedItems[floor] = {};
+  state.deletedItems[floor][id] = Date.now();
+}
 
 // ============================================================
 // STORAGE
@@ -785,7 +836,7 @@ async function save() {
   try {
     const data = {
       furniture: state.furniture,
-      nextId,
+      deletedItems: state.deletedItems,
       currentFloor: state.currentFloor,
       zoom: state.zoom,
       sidebarCollapsed: state.sidebarCollapsed,
@@ -796,6 +847,7 @@ async function save() {
     } else {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
     }
+    scheduleAutoSync();
   } catch (e) { console.warn('Save failed:', e); }
 }
 async function load() {
@@ -813,12 +865,175 @@ async function load() {
     if (!raw) return;
     const data = JSON.parse(raw);
     if (data.furniture) state.furniture = data.furniture;
-    if (data.nextId) nextId = data.nextId;
+    if (data.deletedItems) state.deletedItems = data.deletedItems;
     if (data.currentFloor) state.currentFloor = data.currentFloor;
     if (data.zoom) state.zoom = data.zoom;
     if (data.sidebarCollapsed) state.sidebarCollapsed = true;
     if (data.panelMinimized) state.panelMinimized = true;
+    // Migration: stamp existing items lacking _ts so sync LWW treats them as
+    // "ancient" (any timestamped change overrides them); ensure tombstone maps
+    // exist for every floor.
+    for (const f of Object.keys(state.furniture)) {
+      if (!state.deletedItems[f]) state.deletedItems[f] = {};
+      for (const it of state.furniture[f]) {
+        if (it._ts == null) it._ts = 0;
+      }
+    }
   } catch (e) { console.warn('Load failed:', e); }
+}
+
+// ============================================================
+// CLOUD SYNC (GitHub Gist)
+// ============================================================
+// Storage model: one Gist (user-owned), file "floor-plan-planner.json" holds
+// the sync payload. PAT + Gist ID kept in localStorage (this device only),
+// not in the synced payload itself.
+const SYNC_GIST_ID_KEY  = 'fpp-sync-gist-id';
+const SYNC_TOKEN_KEY    = 'fpp-sync-token';
+const SYNC_FILENAME     = 'floor-plan-planner.json';
+const SYNC_VERSION      = 1;
+let autoSyncTimer = null;
+let syncing = false;
+
+function syncConfigured() {
+  return !!(localStorage.getItem(SYNC_GIST_ID_KEY) && localStorage.getItem(SYNC_TOKEN_KEY));
+}
+
+// Snapshot of every sync-relevant piece of state.
+function getSyncPayload() {
+  return {
+    version: SYNC_VERSION,
+    updated: Date.now(),
+    furniture: state.furniture,
+    deletedItems: state.deletedItems,
+  };
+}
+
+// Merge a remote payload into local state. Per-item LWW by _ts. Tombstones
+// with _ts ≥ item._ts remove that item. Returns true if local changed.
+function mergeSyncData(remote) {
+  if (!remote || !remote.furniture) return false;
+  let changed = false;
+  for (const f of Object.keys(remote.furniture)) {
+    const localItems  = state.furniture[f]  || [];
+    const remoteItems = remote.furniture[f] || [];
+    const localDel    = state.deletedItems[f]                || {};
+    const remoteDel   = (remote.deletedItems && remote.deletedItems[f]) || {};
+
+    // Tombstone map: newer ts per id wins.
+    const mergedDel = { ...localDel };
+    for (const id of Object.keys(remoteDel)) {
+      if (!mergedDel[id] || remoteDel[id] > mergedDel[id]) {
+        mergedDel[id] = remoteDel[id];
+        changed = true;
+      }
+    }
+
+    // Item merge: newer _ts wins; tombstones with ts ≥ item._ts remove.
+    const byId = {};
+    for (const it of localItems)  byId[it.id] = it;
+    for (const it of remoteItems) {
+      const ex = byId[it.id];
+      const rTs = it._ts || 0;
+      if (!ex) { byId[it.id] = it; changed = true; }
+      else if (rTs > (ex._ts || 0)) { byId[it.id] = it; changed = true; }
+    }
+    const survivors = [];
+    for (const id of Object.keys(byId)) {
+      const it = byId[id];
+      const tomb = mergedDel[id];
+      if (tomb && tomb >= (it._ts || 0)) { changed = true; continue; }
+      survivors.push(it);
+    }
+
+    state.furniture[f]    = survivors;
+    state.deletedItems[f] = mergedDel;
+  }
+  return changed;
+}
+
+async function gistPull(gistId, token) {
+  const r = await fetch(`https://api.github.com/gists/${gistId}`, {
+    headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' }
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`Gist GET ${r.status}`);
+  const g = await r.json();
+  const f = g.files && g.files[SYNC_FILENAME];
+  if (!f) return null;
+  // GitHub truncates large files; if so, fetch via raw_url.
+  let content = f.content;
+  if (f.truncated && f.raw_url) {
+    const r2 = await fetch(f.raw_url);
+    if (r2.ok) content = await r2.text();
+  }
+  try { return JSON.parse(content); } catch(e) { console.warn('Bad sync JSON', e); return null; }
+}
+
+async function gistPush(gistId, token, payload) {
+  const r = await fetch(`https://api.github.com/gists/${gistId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `token ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      files: { [SYNC_FILENAME]: { content: JSON.stringify(payload) } }
+    })
+  });
+  if (!r.ok) throw new Error(`Gist PATCH ${r.status}`);
+}
+
+// One-click pull + merge + push. The push always goes after merge so we
+// don't overwrite a peer's concurrent edits — they end up reflected here
+// (additively) and we publish the merged truth.
+async function doSync(opts) {
+  if (syncing) return;
+  const gistId = localStorage.getItem(SYNC_GIST_ID_KEY);
+  const token  = localStorage.getItem(SYNC_TOKEN_KEY);
+  if (!gistId || !token) {
+    if (opts && opts.manual) setSyncStatus('Enter Gist ID + token first', 'err');
+    return;
+  }
+  syncing = true;
+  setSyncStatus('Syncing…');
+  try {
+    const remote = await gistPull(gistId, token);
+    const changed = remote ? mergeSyncData(remote) : false;
+    await gistPush(gistId, token, getSyncPayload());
+    if (changed) { renderFloor(); }
+    // Local save persists the (possibly merged) state; suppress auto-sync echo.
+    suppressAutoSync = true;
+    await save();
+    suppressAutoSync = false;
+    setSyncStatus('Synced ✓');
+  } catch (e) {
+    console.warn('Sync failed', e);
+    setSyncStatus('Error: ' + e.message, 'err');
+  } finally {
+    syncing = false;
+  }
+}
+
+// Auto-sync runs 4 s after the last local mutation. Prevents a sync storm
+// while the user is rapidly editing; the timer resets on each save.
+let suppressAutoSync = false;
+function scheduleAutoSync() {
+  if (suppressAutoSync) return;
+  if (!syncConfigured()) return;
+  if (autoSyncTimer) clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(() => doSync({ manual: false }), 4000);
+}
+
+function setSyncStatus(msg, kind) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = kind === 'err' ? 'var(--danger)' : 'var(--ink-faint)';
+  // Also reflect in the header chip.
+  const chip = document.getElementById('sync-btn-status');
+  if (chip) chip.textContent = msg;
 }
 
 // ============================================================
@@ -1058,6 +1273,7 @@ function renderProperties() {
     s.title = c;
     s.addEventListener('click', () => {
       it.color = c;
+      touch(it);
       renderFurniture();
       scheduleSave();
     });
@@ -1099,7 +1315,7 @@ function addItem(preset) {
   const items = currentItems();
   const cascade = (items.length % 8) * 0.5;
   const item = {
-    id: nextId++,
+    id: genId(),
     label: preset.label,
     w: preset.w,
     d: preset.d,
@@ -1109,6 +1325,7 @@ function addItem(preset) {
     flipH: false,
     color: preset.color || '#cbd5e1',
     shape: preset.shape || 'rect',
+    _ts: Date.now(),
   };
   if (item.shape === 'l') {
     item.notchW = (preset.notchW != null) ? preset.notchW : item.w * 0.5;
@@ -1125,6 +1342,7 @@ function deleteItem(id) {
   const idx = items.findIndex(i => i.id === id);
   if (idx >= 0) {
     items.splice(idx, 1);
+    tombstone(state.currentFloor, id);
     if (state.selectedId === id) state.selectedId = null;
     renderFurniture();
     scheduleSave();
@@ -1134,7 +1352,7 @@ function deleteItem(id) {
 function duplicateItem(id) {
   const it = findItem(id);
   if (!it) return;
-  const copy = { ...it, id: nextId++, x: it.x + 0.5, y: it.y + 0.5 };
+  const copy = { ...it, id: genId(), x: it.x + 0.5, y: it.y + 0.5, _ts: Date.now() };
   currentItems().push(copy);
   state.selectedId = copy.id;
   renderFurniture();
@@ -1144,6 +1362,7 @@ function duplicateItem(id) {
 function flipItem(id) {
   const it = findItem(id);
   if (!it) return;
+  touch(it);
   it.flipH = !it.flipH;
   renderFurniture();
   scheduleSave();
@@ -1238,12 +1457,13 @@ els.furnitureLayer.addEventListener('pointermove', (e) => {
 
 els.furnitureLayer.addEventListener('pointerup', () => {
   if (drag) {
+    touch(findItem(drag.id));
     drag = null;
     scheduleSave();
   }
 });
 els.furnitureLayer.addEventListener('pointercancel', () => {
-  if (drag) { drag = null; scheduleSave(); }
+  if (drag) { touch(findItem(drag.id)); drag = null; scheduleSave(); }
 });
 
 els.furnitureLayer.addEventListener('dblclick', (e) => {
@@ -1255,6 +1475,7 @@ els.furnitureLayer.addEventListener('dblclick', (e) => {
   const newLabel = prompt('Label:', it.label);
   if (newLabel !== null && newLabel.trim()) {
     it.label = newLabel.trim();
+    touch(it);
     renderFurniture();
     scheduleSave();
   }
@@ -1276,6 +1497,7 @@ function bindProp(id, key, parse) {
     if (!it) return;
     const v = parse ? parse(e.target.value) : e.target.value;
     if (v === null || Number.isNaN(v)) return;
+    touch(it);
     it[key] = v;
     renderFurniture();
     scheduleSave();
@@ -1308,6 +1530,7 @@ function bindArm(id, totalKey, notchKey) {
     const arm = Math.max(0.125, snapToEighth(v));
     const clampedArm = Math.min(arm, it[totalKey] - 0.125);
     it[notchKey] = snapToEighth(it[totalKey] - clampedArm);
+    touch(it);
     renderFurniture();
     scheduleSave();
   });
@@ -1360,6 +1583,7 @@ function nudgeRot(delta) {
   const it = findItem(state.selectedId);
   if (!it) return;
   it.rot = (((it.rot + delta) % 360) + 360) % 360;
+  touch(it);
   renderFurniture();
   scheduleSave();
 }
@@ -1390,7 +1614,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   const step = e.shiftKey ? 1 : (state.snap ? 0.5 : (1/12));
-  const nudge = (axis, delta) => { it[axis] = snapToEighth(it[axis] + delta); renderFurniture(); scheduleSave(); };
+  const nudge = (axis, delta) => { it[axis] = snapToEighth(it[axis] + delta); touch(it); renderFurniture(); scheduleSave(); };
   switch (e.key) {
     case 'ArrowLeft':  nudge('x', -step); e.preventDefault(); break;
     case 'ArrowRight': nudge('x',  step); e.preventDefault(); break;
@@ -1458,6 +1682,12 @@ document.getElementById('snap-toggle').addEventListener('change', (e) => {
 
 document.getElementById('clear-floor').addEventListener('click', () => {
   if (!confirm(`Clear all furniture from floor ${state.currentFloor}?`)) return;
+  // Tombstone each item so the deletion syncs to other devices.
+  const now = Date.now();
+  if (!state.deletedItems[state.currentFloor]) state.deletedItems[state.currentFloor] = {};
+  for (const it of state.furniture[state.currentFloor]) {
+    state.deletedItems[state.currentFloor][it.id] = now;
+  }
   state.furniture[state.currentFloor] = [];
   state.selectedId = null;
   renderFurniture();
@@ -1490,6 +1720,39 @@ document.getElementById('custom-ok').addEventListener('click', doCustomAdd);
 document.getElementById('custom-label').addEventListener('keydown', (e) => { if (e.key === 'Enter') doCustomAdd(); });
 
 // ============================================================
+// SYNC MODAL
+// ============================================================
+const syncModalBg = document.getElementById('sync-modal-bg');
+function openSyncModal() {
+  document.getElementById('sync-gist-id').value = localStorage.getItem(SYNC_GIST_ID_KEY) || '';
+  document.getElementById('sync-token-input').value = localStorage.getItem(SYNC_TOKEN_KEY) || '';
+  if (!document.getElementById('sync-status').textContent || document.getElementById('sync-status').textContent === 'Not configured') {
+    setSyncStatus(syncConfigured() ? 'Ready' : 'Not configured');
+  }
+  syncModalBg.classList.add('open');
+}
+document.getElementById('sync-open-btn').addEventListener('click', openSyncModal);
+document.getElementById('sync-close').addEventListener('click', () => syncModalBg.classList.remove('open'));
+syncModalBg.addEventListener('click', (e) => { if (e.target === syncModalBg) syncModalBg.classList.remove('open'); });
+document.getElementById('sync-now').addEventListener('click', async () => {
+  const gistId = document.getElementById('sync-gist-id').value.trim();
+  const token  = document.getElementById('sync-token-input').value.trim();
+  if (!gistId || !token) { setSyncStatus('Enter both fields', 'err'); return; }
+  localStorage.setItem(SYNC_GIST_ID_KEY, gistId);
+  localStorage.setItem(SYNC_TOKEN_KEY, token);
+  await doSync({ manual: true });
+});
+document.getElementById('sync-clear').addEventListener('click', () => {
+  if (!confirm('Forget Gist ID and token on this device? (Remote data untouched.)')) return;
+  localStorage.removeItem(SYNC_GIST_ID_KEY);
+  localStorage.removeItem(SYNC_TOKEN_KEY);
+  document.getElementById('sync-gist-id').value = '';
+  document.getElementById('sync-token-input').value = '';
+  setSyncStatus('Not configured');
+  document.getElementById('sync-btn-status').textContent = '';
+});
+
+// ============================================================
 // INIT
 // ============================================================
 (async function init() {
@@ -1511,6 +1774,12 @@ document.getElementById('custom-label').addEventListener('keydown', (e) => { if 
       }
     }
   }, 100);
+  // If sync is set up, pull-merge-push on launch so this device catches up
+  // with anything peers pushed while we were offline.
+  if (syncConfigured()) {
+    suppressAutoSync = true;
+    setTimeout(() => { suppressAutoSync = false; doSync({ manual: false }); }, 500);
+  }
 })();
 </script>
 </body>
