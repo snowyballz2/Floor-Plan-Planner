@@ -225,6 +225,55 @@
     text-align: center;
     pointer-events: none;
   }
+  /* Measurement tool — SVG layer over the canvas, individual elements clickable. */
+  .measure-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .measure-layer .m-line {
+    stroke: rgba(13,148,136,0.85);
+    stroke-width: 1.5;
+    cursor: pointer;
+    pointer-events: stroke;
+  }
+  .measure-layer .m-line.selected { stroke: var(--accent); stroke-width: 2.5; }
+  .measure-layer .m-handle {
+    fill: white;
+    stroke: rgba(13,148,136,0.85);
+    stroke-width: 1.5;
+    cursor: grab;
+    pointer-events: all;
+  }
+  .measure-layer .m-handle.selected { stroke: var(--accent); stroke-width: 2; }
+  .measure-layer .m-label {
+    fill: rgba(0,0,0,0.9);
+    stroke: white;
+    stroke-width: 3;
+    paint-order: stroke;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    pointer-events: all;
+    cursor: pointer;
+    user-select: none;
+  }
+  .measure-layer .m-preview {
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    opacity: 0.7;
+  }
+  .canvas-wrapper.measure-mode { cursor: crosshair; }
+  .canvas-wrapper.measure-mode .furniture-layer { pointer-events: none; }
+  #measure-toggle.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
   /* Small dimension callout used on shape edges (L-shape arm dims). */
   .dim-callout {
     position: absolute;
@@ -549,6 +598,7 @@
     <label class="toggle">
       <input type="checkbox" id="snap-toggle"> Snap 6"
     </label>
+    <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
   </div>
 
   <div class="header-spacer"></div>
@@ -570,6 +620,7 @@
       <div class="canvas" id="canvas">
         <img class="floor-image" id="floor-image" alt="Floor">
         <div class="furniture-layer" id="furniture-layer"></div>
+        <svg class="measure-layer" id="measure-layer" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
     </div>
 
@@ -805,7 +856,15 @@ const state = {
   // a deletion on one device propagates to another device that still has the
   // item locally.
   deletedItems: { 1: {}, 2: {}, 3: {}, 4: {} },
+  // Free-floating dimension lines drawn by the user (same lifecycle as
+  // furniture: per-item _ts, tombstoned on delete, synced).
+  measurements: { 1: [], 2: [], 3: [], 4: [] },
+  deletedMeasurements: { 1: {}, 2: {}, 3: {}, 4: {} },
   selectedId: null,
+  selectedMeasurementId: null,
+  measureMode: false,
+  measureFirstPoint: null,
+  measurePreview: null,
   sidebarCollapsed: false,
   panelMinimized: false,
 };
@@ -822,6 +881,10 @@ function tombstone(floor, id) {
   if (!state.deletedItems[floor]) state.deletedItems[floor] = {};
   state.deletedItems[floor][id] = Date.now();
 }
+function tombstoneMeasurement(floor, id) {
+  if (!state.deletedMeasurements[floor]) state.deletedMeasurements[floor] = {};
+  state.deletedMeasurements[floor][id] = Date.now();
+}
 
 // ============================================================
 // STORAGE
@@ -837,6 +900,8 @@ async function save() {
     const data = {
       furniture: state.furniture,
       deletedItems: state.deletedItems,
+      measurements: state.measurements,
+      deletedMeasurements: state.deletedMeasurements,
       currentFloor: state.currentFloor,
       zoom: state.zoom,
       sidebarCollapsed: state.sidebarCollapsed,
@@ -866,6 +931,8 @@ async function load() {
     const data = JSON.parse(raw);
     if (data.furniture) state.furniture = data.furniture;
     if (data.deletedItems) state.deletedItems = data.deletedItems;
+    if (data.measurements) state.measurements = data.measurements;
+    if (data.deletedMeasurements) state.deletedMeasurements = data.deletedMeasurements;
     if (data.currentFloor) state.currentFloor = data.currentFloor;
     if (data.zoom) state.zoom = data.zoom;
     if (data.sidebarCollapsed) state.sidebarCollapsed = true;
@@ -877,6 +944,13 @@ async function load() {
       if (!state.deletedItems[f]) state.deletedItems[f] = {};
       for (const it of state.furniture[f]) {
         if (it._ts == null) it._ts = 0;
+      }
+    }
+    for (const f of ['1','2','3','4']) {
+      if (!state.measurements[f]) state.measurements[f] = [];
+      if (!state.deletedMeasurements[f]) state.deletedMeasurements[f] = {};
+      for (const m of state.measurements[f]) {
+        if (m._ts == null) m._ts = 0;
       }
     }
   } catch (e) { console.warn('Load failed:', e); }
@@ -906,6 +980,8 @@ function getSyncPayload() {
     updated: Date.now(),
     furniture: state.furniture,
     deletedItems: state.deletedItems,
+    measurements: state.measurements,
+    deletedMeasurements: state.deletedMeasurements,
   };
 }
 
@@ -948,6 +1024,36 @@ function mergeSyncData(remote) {
 
     state.furniture[f]    = survivors;
     state.deletedItems[f] = mergedDel;
+  }
+  // Merge measurements with the same LWW + tombstone strategy.
+  if (remote.measurements) {
+    for (const f of Object.keys(remote.measurements)) {
+      const localItems  = state.measurements[f]  || [];
+      const remoteItems = remote.measurements[f] || [];
+      const localDel    = state.deletedMeasurements[f]                  || {};
+      const remoteDel   = (remote.deletedMeasurements && remote.deletedMeasurements[f]) || {};
+      const mergedDel = { ...localDel };
+      for (const id of Object.keys(remoteDel)) {
+        if (!mergedDel[id] || remoteDel[id] > mergedDel[id]) { mergedDel[id] = remoteDel[id]; changed = true; }
+      }
+      const byId = {};
+      for (const m of localItems)  byId[m.id] = m;
+      for (const m of remoteItems) {
+        const ex = byId[m.id];
+        const rTs = m._ts || 0;
+        if (!ex) { byId[m.id] = m; changed = true; }
+        else if (rTs > (ex._ts || 0)) { byId[m.id] = m; changed = true; }
+      }
+      const survivors = [];
+      for (const id of Object.keys(byId)) {
+        const m = byId[id];
+        const tomb = mergedDel[id];
+        if (tomb && tomb >= (m._ts || 0)) { changed = true; continue; }
+        survivors.push(m);
+      }
+      state.measurements[f]        = survivors;
+      state.deletedMeasurements[f] = mergedDel;
+    }
   }
   return changed;
 }
@@ -1137,6 +1243,78 @@ function renderFloor() {
   });
 
   renderFurniture();
+  renderMeasurements();
+}
+
+// ============================================================
+// MEASUREMENTS
+// ============================================================
+function currentMeasurements() { return state.measurements[state.currentFloor] || []; }
+function findMeasurement(id) { return currentMeasurements().find(m => m.id === id); }
+function distFt(m) {
+  return Math.sqrt((m.x2 - m.x1) * (m.x2 - m.x1) + (m.y2 - m.y1) * (m.y2 - m.y1));
+}
+function deleteMeasurement(id) {
+  const items = state.measurements[state.currentFloor];
+  const idx = items.findIndex(m => m.id === id);
+  if (idx < 0) return;
+  items.splice(idx, 1);
+  tombstoneMeasurement(state.currentFloor, id);
+  if (state.selectedMeasurementId === id) state.selectedMeasurementId = null;
+  renderMeasurements();
+  scheduleSave();
+}
+
+function renderMeasurements() {
+  const f = FLOORS[state.currentFloor];
+  const svg = document.getElementById('measure-layer');
+  if (!svg) return;
+  svg.setAttribute('width',  f.w);
+  svg.setAttribute('height', f.h);
+  svg.setAttribute('viewBox', `0 0 ${f.w} ${f.h}`);
+  const items = currentMeasurements();
+  let html = '';
+  for (const m of items) {
+    const x1 = f.offsetX + m.x1 * f.pxPerFt;
+    const y1 = f.offsetY + m.y1 * f.pxPerFt;
+    const x2 = f.offsetX + m.x2 * f.pxPerFt;
+    const y2 = f.offsetY + m.y2 * f.pxPerFt;
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    let angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+    // Keep text upright (rotate text 180° if line points "backwards").
+    let textAngle = angle;
+    if (textAngle > 90) textAngle -= 180;
+    else if (textAngle < -90) textAngle += 180;
+    const lenText = ftToFeetInchesFull(distFt(m));
+    const sel = m.id === state.selectedMeasurementId ? ' selected' : '';
+    const hR = m.id === state.selectedMeasurementId ? 6 : 4;
+    // Nudge label slightly above the line (perpendicular offset) so it doesn't sit on top of the line.
+    const rad = angle * Math.PI / 180;
+    const ox = Math.sin(rad) * 7;
+    const oy = -Math.cos(rad) * 7;
+    const lx = mx + ox, ly = my + oy;
+    html += `
+      <g class="measurement" data-id="${m.id}">
+        <line class="m-line${sel}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>
+        <text class="m-label" x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" transform="rotate(${textAngle.toFixed(2)} ${lx} ${ly})" vector-effect="non-scaling-stroke">${lenText}</text>
+        <circle class="m-handle${sel}" cx="${x1}" cy="${y1}" r="${hR}" data-pt="1" vector-effect="non-scaling-stroke"/>
+        <circle class="m-handle${sel}" cx="${x2}" cy="${y2}" r="${hR}" data-pt="2" vector-effect="non-scaling-stroke"/>
+      </g>
+    `;
+  }
+  // Live preview while in measure mode (between first click and second click).
+  if (state.measureMode && state.measureFirstPoint && state.measurePreview) {
+    const p1 = state.measureFirstPoint, p2 = state.measurePreview;
+    const x1 = f.offsetX + p1.x * f.pxPerFt, y1 = f.offsetY + p1.y * f.pxPerFt;
+    const x2 = f.offsetX + p2.x * f.pxPerFt, y2 = f.offsetY + p2.y * f.pxPerFt;
+    const len = Math.sqrt((p2.x-p1.x)**2 + (p2.y-p1.y)**2);
+    html += `
+      <line class="m-preview" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>
+      <text class="m-label" x="${(x1+x2)/2}" y="${(y1+y2)/2 - 8}" text-anchor="middle">${ftToFeetInchesFull(len)}</text>
+    `;
+  }
+  svg.innerHTML = html;
 }
 
 // Build the inline SVG body that draws the furniture's outline + fill.
@@ -1517,11 +1695,108 @@ els.furnitureLayer.addEventListener('dblclick', (e) => {
 });
 
 els.canvas.addEventListener('pointerdown', (e) => {
+  // In measure mode, canvas clicks place measurement endpoints.
+  if (state.measureMode) {
+    // Ignore clicks on furniture (passthrough disabled by .measure-mode CSS
+    // but defensive) or on existing measurement elements (handled by SVG handlers).
+    if (e.target.closest('.m-handle, .m-line, .m-label')) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    const p = { x: snapToEighth(ft.x), y: snapToEighth(ft.y) };
+    if (!state.measureFirstPoint) {
+      state.measureFirstPoint = p;
+      state.measurePreview = p;
+    } else {
+      const m = {
+        id: genId(),
+        x1: state.measureFirstPoint.x, y1: state.measureFirstPoint.y,
+        x2: p.x, y2: p.y,
+        _ts: Date.now(),
+      };
+      state.measurements[state.currentFloor].push(m);
+      state.selectedMeasurementId = m.id;
+      state.measureFirstPoint = null;
+      state.measurePreview = null;
+      scheduleSave();
+    }
+    renderMeasurements();
+    e.preventDefault();
+    return;
+  }
   if (!e.target.closest('.furniture')) {
     state.selectedId = null;
     renderFurniture();
   }
 });
+
+// Track cursor for the preview line.
+els.canvas.addEventListener('pointermove', (e) => {
+  if (!state.measureMode || !state.measureFirstPoint) return;
+  const rect = els.canvas.getBoundingClientRect();
+  const ft = getMouseFt(e, rect);
+  state.measurePreview = { x: snapToEighth(ft.x), y: snapToEighth(ft.y) };
+  renderMeasurements();
+});
+
+// Measurement selection + endpoint dragging.
+let mDrag = null;
+(function wireMeasureLayer() {
+  const svg = document.getElementById('measure-layer');
+  svg.addEventListener('pointerdown', (e) => {
+    if (state.measureMode) return;
+    const group = e.target.closest('.measurement');
+    if (!group) return;
+    const id = +group.dataset.id;
+    const m = findMeasurement(id);
+    if (!m) return;
+    state.selectedMeasurementId = id;
+    state.selectedId = null;
+    renderFurniture();
+    renderMeasurements();
+    const handle = e.target.closest('.m-handle');
+    if (handle) {
+      mDrag = { id, pt: +handle.dataset.pt };
+      try { e.target.setPointerCapture(e.pointerId); } catch(_) {}
+    }
+    e.stopPropagation();
+    e.preventDefault();
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!mDrag) return;
+    const m = findMeasurement(mDrag.id);
+    if (!m) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    const sx = snapToEighth(ft.x), sy = snapToEighth(ft.y);
+    if (mDrag.pt === 1) { m.x1 = sx; m.y1 = sy; }
+    else { m.x2 = sx; m.y2 = sy; }
+    touch(m);
+    renderMeasurements();
+  });
+  svg.addEventListener('pointerup', () => { if (mDrag) { mDrag = null; scheduleSave(); } });
+  svg.addEventListener('pointercancel', () => { if (mDrag) { mDrag = null; scheduleSave(); } });
+})();
+
+// Measure button toggles measure mode.
+(function wireMeasureButton() {
+  const btn = document.getElementById('measure-toggle');
+  const wrap = document.getElementById('canvas-wrapper');
+  function applyMode() {
+    btn.classList.toggle('active', state.measureMode);
+    wrap.classList.toggle('measure-mode', state.measureMode);
+  }
+  btn.addEventListener('click', () => {
+    state.measureMode = !state.measureMode;
+    if (!state.measureMode) {
+      state.measureFirstPoint = null;
+      state.measurePreview = null;
+    }
+    applyMode();
+    renderMeasurements();
+  });
+  // Expose so init/Esc can reset visuals.
+  window.__applyMeasureMode = applyMode;
+})();
 
 // ============================================================
 // PROPERTY PANEL BINDINGS
@@ -1642,6 +1917,27 @@ document.getElementById('prop-delete-btn').addEventListener('click', () => state
 // ============================================================
 window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, select, textarea')) return;
+  // Measure mode: Esc exits, Delete/Backspace removes the selected measurement.
+  if (state.measureMode && e.key === 'Escape') {
+    state.measureMode = false;
+    state.measureFirstPoint = null;
+    state.measurePreview = null;
+    if (window.__applyMeasureMode) window.__applyMeasureMode();
+    renderMeasurements();
+    e.preventDefault();
+    return;
+  }
+  if (state.selectedMeasurementId != null && (e.key === 'Delete' || e.key === 'Backspace')) {
+    deleteMeasurement(state.selectedMeasurementId);
+    e.preventDefault();
+    return;
+  }
+  if (state.selectedMeasurementId != null && e.key === 'Escape') {
+    state.selectedMeasurementId = null;
+    renderMeasurements();
+    e.preventDefault();
+    return;
+  }
   const id = state.selectedId;
   const it = findItem(id);
   if (!it) {
