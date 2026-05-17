@@ -269,10 +269,52 @@
   }
   .canvas-wrapper.measure-mode { cursor: crosshair; }
   .canvas-wrapper.measure-mode .furniture-layer { pointer-events: none; }
-  /* "Show labels" toggle: hides item titles + edge dimension callouts. */
+  .canvas-wrapper.label-mode { cursor: crosshair; }
+  .canvas-wrapper.label-mode .furniture-layer { pointer-events: none; }
+  /* "Show labels" toggle: hides item titles + edge dimension callouts + room labels. */
   body.no-labels .furniture .label,
   body.no-labels .furniture .dims,
-  body.no-labels .dim-callout { display: none; }
+  body.no-labels .dim-callout,
+  body.no-labels .room-label { display: none; }
+  /* Room labels — free-floating named tags ("Living Room", etc.). */
+  .room-label-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .room-label {
+    position: absolute;
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(0,0,0,0.78);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 7px;
+    background: rgba(255,255,255,0.72);
+    border-radius: 3px;
+    cursor: move;
+    user-select: none;
+    white-space: nowrap;
+    pointer-events: auto;
+    transform: translate(-50%, -50%);
+  }
+  .room-label.selected {
+    outline: 1.5px solid var(--accent);
+    outline-offset: 2px;
+    color: var(--ink);
+    background: rgba(255,255,255,0.92);
+    z-index: 50;
+  }
+  #room-label-add-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
   #measure-toggle.active {
     background: var(--accent);
     color: white;
@@ -621,6 +663,7 @@
       <input type="checkbox" id="labels-toggle" checked> Labels
     </label>
     <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
+    <button id="room-label-add-btn" title="Add room label (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🏷 Label</button>
   </div>
 
   <div class="header-spacer"></div>
@@ -643,6 +686,7 @@
         <img class="floor-image" id="floor-image" alt="Floor">
         <div class="furniture-layer" id="furniture-layer"></div>
         <svg class="measure-layer" id="measure-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="room-label-layer" id="room-label-layer"></div>
       </div>
     </div>
   </div>
@@ -993,6 +1037,11 @@ const state = {
   // furniture: per-item _ts, tombstoned on delete, synced).
   measurements: { 1: [], 2: [], 3: [], 4: [] },
   deletedMeasurements: { 1: {}, 2: {}, 3: {}, 4: {} },
+  // Room labels — user-placed text annotations on the floor plan.
+  roomLabels: { 1: [], 2: [], 3: [], 4: [] },
+  deletedRoomLabels: { 1: {}, 2: {}, 3: {}, 4: {} },
+  selectedRoomLabelId: null,
+  labelMode: false,
   // Per-floor overrides (name, order, calibration). New floors live here too
   // with full data. Default floors fall back to FLOORS/FLOOR_META if missing.
   floors: {},
@@ -1023,6 +1072,10 @@ function tombstoneMeasurement(floor, id) {
   if (!state.deletedMeasurements[floor]) state.deletedMeasurements[floor] = {};
   state.deletedMeasurements[floor][id] = Date.now();
 }
+function tombstoneRoomLabel(floor, id) {
+  if (!state.deletedRoomLabels[floor]) state.deletedRoomLabels[floor] = {};
+  state.deletedRoomLabels[floor][id] = Date.now();
+}
 
 // ============================================================
 // STORAGE
@@ -1040,6 +1093,8 @@ async function save() {
       deletedItems: state.deletedItems,
       measurements: state.measurements,
       deletedMeasurements: state.deletedMeasurements,
+      roomLabels: state.roomLabels,
+      deletedRoomLabels: state.deletedRoomLabels,
       floors: state.floors,
       deletedFloors: state.deletedFloors,
       currentFloor: state.currentFloor,
@@ -1074,6 +1129,8 @@ async function load() {
     if (data.deletedItems) state.deletedItems = data.deletedItems;
     if (data.measurements) state.measurements = data.measurements;
     if (data.deletedMeasurements) state.deletedMeasurements = data.deletedMeasurements;
+    if (data.roomLabels) state.roomLabels = data.roomLabels;
+    if (data.deletedRoomLabels) state.deletedRoomLabels = data.deletedRoomLabels;
     if (data.floors) state.floors = data.floors;
     if (data.deletedFloors) state.deletedFloors = data.deletedFloors;
     if (data.currentFloor) state.currentFloor = String(data.currentFloor);
@@ -1095,6 +1152,11 @@ async function load() {
       if (!state.deletedMeasurements[f]) state.deletedMeasurements[f] = {};
       for (const m of state.measurements[f]) {
         if (m._ts == null) m._ts = 0;
+      }
+      if (!state.roomLabels[f]) state.roomLabels[f] = [];
+      if (!state.deletedRoomLabels[f]) state.deletedRoomLabels[f] = {};
+      for (const l of state.roomLabels[f]) {
+        if (l._ts == null) l._ts = 0;
       }
     }
   } catch (e) { console.warn('Load failed:', e); }
@@ -1126,6 +1188,8 @@ function getSyncPayload() {
     deletedItems: state.deletedItems,
     measurements: state.measurements,
     deletedMeasurements: state.deletedMeasurements,
+    roomLabels: state.roomLabels,
+    deletedRoomLabels: state.deletedRoomLabels,
     floors: state.floors,
     deletedFloors: state.deletedFloors,
   };
@@ -1199,6 +1263,36 @@ function mergeSyncData(remote) {
       }
       state.measurements[f]        = survivors;
       state.deletedMeasurements[f] = mergedDel;
+    }
+  }
+  // Merge room labels with the same LWW + tombstone strategy.
+  if (remote.roomLabels) {
+    for (const f of Object.keys(remote.roomLabels)) {
+      const localItems  = state.roomLabels[f]  || [];
+      const remoteItems = remote.roomLabels[f] || [];
+      const localDel    = state.deletedRoomLabels[f]                  || {};
+      const remoteDel   = (remote.deletedRoomLabels && remote.deletedRoomLabels[f]) || {};
+      const mergedDel = { ...localDel };
+      for (const id of Object.keys(remoteDel)) {
+        if (!mergedDel[id] || remoteDel[id] > mergedDel[id]) { mergedDel[id] = remoteDel[id]; changed = true; }
+      }
+      const byId = {};
+      for (const l of localItems)  byId[l.id] = l;
+      for (const l of remoteItems) {
+        const ex = byId[l.id];
+        const rTs = l._ts || 0;
+        if (!ex) { byId[l.id] = l; changed = true; }
+        else if (rTs > (ex._ts || 0)) { byId[l.id] = l; changed = true; }
+      }
+      const survivors = [];
+      for (const id of Object.keys(byId)) {
+        const l = byId[id];
+        const tomb = mergedDel[id];
+        if (tomb && tomb >= (l._ts || 0)) { changed = true; continue; }
+        survivors.push(l);
+      }
+      state.roomLabels[f]        = survivors;
+      state.deletedRoomLabels[f] = mergedDel;
     }
   }
   // Merge floors: per-floor LWW on the override record, plus tombstones.
@@ -1409,6 +1503,38 @@ function renderFloor() {
   renderFloorTabs();
   renderFurniture();
   renderMeasurements();
+  renderRoomLabels();
+}
+
+// ============================================================
+// ROOM LABELS
+// ============================================================
+function currentRoomLabels() { return state.roomLabels[state.currentFloor] || []; }
+function findRoomLabel(id) { return currentRoomLabels().find(l => l.id === id); }
+function deleteRoomLabel(id) {
+  const items = state.roomLabels[state.currentFloor];
+  const idx = items.findIndex(l => l.id === id);
+  if (idx < 0) return;
+  items.splice(idx, 1);
+  tombstoneRoomLabel(state.currentFloor, id);
+  if (state.selectedRoomLabelId === id) state.selectedRoomLabelId = null;
+  renderRoomLabels();
+  scheduleSave();
+}
+function renderRoomLabels() {
+  const f = getFloor(state.currentFloor);
+  const layer = document.getElementById('room-label-layer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  for (const l of currentRoomLabels()) {
+    const el = document.createElement('div');
+    el.className = 'room-label' + (l.id === state.selectedRoomLabelId ? ' selected' : '');
+    el.dataset.id = l.id;
+    el.style.left = (f.offsetX + l.x * f.pxPerFt) + 'px';
+    el.style.top  = (f.offsetY + l.y * f.pxPerFt) + 'px';
+    el.textContent = l.text;
+    layer.appendChild(el);
+  }
 }
 
 // Build the floor tab row from getAllFloors() plus the trailing "+" button.
@@ -1931,6 +2057,28 @@ function axisLockTo(pt, from) {
 }
 
 els.canvas.addEventListener('pointerdown', (e) => {
+  // In label mode, canvas clicks place a new room label.
+  if (state.labelMode) {
+    if (e.target.closest('.room-label')) return; // existing label handles its own click
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    const txt = (prompt('Label text:', '') || '').trim();
+    if (txt) {
+      const l = {
+        id: genId(),
+        x: snapToEighth(ft.x),
+        y: snapToEighth(ft.y),
+        text: txt,
+        _ts: Date.now(),
+      };
+      state.roomLabels[state.currentFloor].push(l);
+      state.selectedRoomLabelId = l.id;
+      renderRoomLabels();
+      scheduleSave();
+    }
+    e.preventDefault();
+    return;
+  }
   // In measure mode, canvas clicks place measurement endpoints.
   if (state.measureMode) {
     // Ignore clicks on furniture (passthrough disabled by .measure-mode CSS
@@ -2036,11 +2184,88 @@ let mDrag = null;
       state.measureFirstPoint = null;
       state.measurePreview = null;
     }
+    if (state.measureMode && state.labelMode) {
+      // Mutually exclusive — turn off label mode.
+      state.labelMode = false;
+      window.__applyLabelMode && window.__applyLabelMode();
+    }
     applyMode();
     renderMeasurements();
   });
-  // Expose so init/Esc can reset visuals.
   window.__applyMeasureMode = applyMode;
+})();
+
+// Label button toggles room-label placement mode.
+(function wireLabelButton() {
+  const btn = document.getElementById('room-label-add-btn');
+  const wrap = document.getElementById('canvas-wrapper');
+  function applyMode() {
+    btn.classList.toggle('active', state.labelMode);
+    wrap.classList.toggle('label-mode', state.labelMode);
+  }
+  btn.addEventListener('click', () => {
+    state.labelMode = !state.labelMode;
+    if (state.labelMode && state.measureMode) {
+      state.measureMode = false;
+      state.measureFirstPoint = null;
+      state.measurePreview = null;
+      window.__applyMeasureMode && window.__applyMeasureMode();
+      renderMeasurements();
+    }
+    applyMode();
+  });
+  window.__applyLabelMode = applyMode;
+})();
+
+// Room label selection + drag + double-click to edit.
+let rlDrag = null;
+(function wireRoomLabels() {
+  const layer = document.getElementById('room-label-layer');
+  layer.addEventListener('pointerdown', (e) => {
+    if (state.labelMode) return; // placement clicks go to canvas handler
+    const el = e.target.closest('.room-label');
+    if (!el) return;
+    const id = +el.dataset.id;
+    const l = findRoomLabel(id);
+    if (!l) return;
+    state.selectedRoomLabelId = id;
+    state.selectedId = null;
+    state.selectedMeasurementId = null;
+    renderFurniture(); renderMeasurements(); renderRoomLabels();
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    rlDrag = { id, dx: l.x - ft.x, dy: l.y - ft.y };
+    try { el.setPointerCapture(e.pointerId); } catch(_) {}
+    e.stopPropagation();
+    e.preventDefault();
+  });
+  layer.addEventListener('pointermove', (e) => {
+    if (!rlDrag) return;
+    const l = findRoomLabel(rlDrag.id);
+    if (!l) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    l.x = snapToEighth(ft.x + rlDrag.dx);
+    l.y = snapToEighth(ft.y + rlDrag.dy);
+    touch(l);
+    renderRoomLabels();
+  });
+  layer.addEventListener('pointerup', () => { if (rlDrag) { rlDrag = null; scheduleSave(); } });
+  layer.addEventListener('pointercancel', () => { if (rlDrag) { rlDrag = null; scheduleSave(); } });
+  layer.addEventListener('dblclick', (e) => {
+    const el = e.target.closest('.room-label');
+    if (!el) return;
+    const id = +el.dataset.id;
+    const l = findRoomLabel(id);
+    if (!l) return;
+    const next = prompt('Label text:', l.text);
+    if (next !== null && next.trim()) {
+      l.text = next.trim();
+      touch(l);
+      renderRoomLabels();
+      scheduleSave();
+    }
+  });
 })();
 
 // ============================================================
@@ -2166,7 +2391,7 @@ document.getElementById('prop-delete-btn').addEventListener('click', () => state
 // ============================================================
 window.addEventListener('keydown', (e) => {
   if (e.target.matches('input, select, textarea')) return;
-  // Measure mode: Esc exits, Delete/Backspace removes the selected measurement.
+  // Measure / label modes: Esc exits.
   if (state.measureMode && e.key === 'Escape') {
     state.measureMode = false;
     state.measureFirstPoint = null;
@@ -2176,6 +2401,25 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
+  if (state.labelMode && e.key === 'Escape') {
+    state.labelMode = false;
+    if (window.__applyLabelMode) window.__applyLabelMode();
+    e.preventDefault();
+    return;
+  }
+  // Selected room label: Delete removes, Esc deselects.
+  if (state.selectedRoomLabelId != null && (e.key === 'Delete' || e.key === 'Backspace')) {
+    deleteRoomLabel(state.selectedRoomLabelId);
+    e.preventDefault();
+    return;
+  }
+  if (state.selectedRoomLabelId != null && e.key === 'Escape') {
+    state.selectedRoomLabelId = null;
+    renderRoomLabels();
+    e.preventDefault();
+    return;
+  }
+  // Selected measurement: Delete removes, Esc deselects.
   if (state.selectedMeasurementId != null && (e.key === 'Delete' || e.key === 'Backspace')) {
     deleteMeasurement(state.selectedMeasurementId);
     e.preventDefault();
