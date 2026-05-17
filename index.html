@@ -984,6 +984,8 @@ const PRESETS = [
   { cat: 'Living',  label: 'Coffee Table',   w: ft(48), d: ft(24), color: '#d4d4d8' },
   { cat: 'Living',  label: 'Side Table',     w: ft(22), d: ft(22), color: '#d4d4d8' },
   { cat: 'Living',  label: 'Side Table Rd',  w: ft(22), d: ft(22), color: '#d4d4d8', shape: 'circle' },
+  // Half-oval (D-shape) console table: 52" along the flat back × 18" peak depth.
+  { cat: 'Living',  label: 'Console Half',   w: ft(52), d: ft(18), color: '#92400e', shape: 'half-oval' },
   { cat: 'Living',  label: 'TV Stand',       w: ft(60), d: ft(16), color: '#52525b' },
   { cat: 'Living',  label: 'Wall TV 65"',    w: ft(57), d: ft(3),  color: '#0f172a' },
   { cat: 'Living',  label: 'Bookshelf',      w: ft(36), d: ft(12), color: '#92400e' },
@@ -1726,6 +1728,9 @@ function renderShapeSVG(it) {
     body = `<ellipse cx="50" cy="50" rx="50" ry="50" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke"/>`;
   } else if (it.shape === 'round') {
     body = `<rect x="0" y="0" width="100" height="100" rx="14" ry="14" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke"/>`;
+  } else if (it.shape === 'half-oval') {
+    // Flat side along the top (y=0), curve bulging downward to y=100 at the peak.
+    body = `<path d="M 0,0 L 100,0 A 50,100 0 0 1 0,0 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke"/>`;
   } else {
     body = `<rect x="0" y="0" width="100" height="100" rx="1" ry="1" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke"/>`;
   }
