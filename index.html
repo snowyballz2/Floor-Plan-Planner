@@ -300,6 +300,27 @@
   }
   .field input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .rot-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 4px;
+    align-items: stretch;
+  }
+  .rot-btn {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    padding: 6px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    min-width: 44px;
+    line-height: 1;
+  }
+  .rot-btn:hover { background: var(--paper-dim); border-color: var(--ink-soft); }
+  .rot-btn:active { background: var(--accent-faint); border-color: var(--accent); }
 
   .color-swatches {
     display: grid;
@@ -471,7 +492,11 @@
       </div>
       <div class="field">
         <label>Rotation</label>
-        <input type="number" id="prop-rot" step="15">
+        <div class="rot-row">
+          <button type="button" class="rot-btn" id="prop-rot-minus">−15°</button>
+          <input type="number" id="prop-rot" step="15">
+          <button type="button" class="rot-btn" id="prop-rot-plus">+15°</button>
+        </div>
       </div>
       <div class="field">
         <label>Color</label>
@@ -1005,6 +1030,24 @@ bindProp('prop-x', 'x', v => parseFloat(v) || 0);
 bindProp('prop-y', 'y', v => parseFloat(v) || 0);
 bindProp('prop-rot', 'rot', v => parseFloat(v) || 0);
 
+function nudgeRot(delta) {
+  const it = findItem(state.selectedId);
+  if (!it) return;
+  it.rot = (((it.rot + delta) % 360) + 360) % 360;
+  renderFurniture();
+  scheduleSave();
+}
+document.getElementById('prop-rot-minus').addEventListener('click', () => nudgeRot(-15));
+document.getElementById('prop-rot-plus').addEventListener('click', () => nudgeRot(15));
+
+// Auto-select input contents on focus so user can type a new value immediately.
+document.querySelectorAll('input[type="number"], input[type="text"]').forEach(inp => {
+  inp.addEventListener('focus', e => {
+    // setTimeout defers past Safari/Chrome's post-focus deselect
+    setTimeout(() => { try { e.target.select(); } catch(_) {} }, 0);
+  });
+});
+
 document.getElementById('prop-flip-btn').addEventListener('click', () => state.selectedId && flipItem(state.selectedId));
 document.getElementById('prop-dup-btn').addEventListener('click', () => state.selectedId && duplicateItem(state.selectedId));
 document.getElementById('prop-delete-btn').addEventListener('click', () => state.selectedId && deleteItem(state.selectedId));
@@ -1027,8 +1070,7 @@ window.addEventListener('keydown', (e) => {
     case 'ArrowUp':    it.y -= step; renderFurniture(); scheduleSave(); e.preventDefault(); break;
     case 'ArrowDown':  it.y += step; renderFurniture(); scheduleSave(); e.preventDefault(); break;
     case 'r': case 'R':
-      it.rot = (it.rot + (e.shiftKey ? -15 : 15)) % 360;
-      renderFurniture(); scheduleSave();
+      nudgeRot(e.shiftKey ? -15 : 15);
       break;
     case 'f': case 'F':
       flipItem(id);
