@@ -1883,6 +1883,13 @@ els.furnitureLayer.addEventListener('dblclick', (e) => {
   }
 });
 
+// Shift-snap a point to the H or V axis through `from` (whichever distance is larger).
+function axisLockTo(pt, from) {
+  const dx = Math.abs(pt.x - from.x);
+  const dy = Math.abs(pt.y - from.y);
+  return dx > dy ? { x: pt.x, y: from.y } : { x: from.x, y: pt.y };
+}
+
 els.canvas.addEventListener('pointerdown', (e) => {
   // In measure mode, canvas clicks place measurement endpoints.
   if (state.measureMode) {
@@ -1891,11 +1898,13 @@ els.canvas.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.m-handle, .m-line, .m-label')) return;
     const rect = els.canvas.getBoundingClientRect();
     const ft = getMouseFt(e, rect);
-    const p = { x: snapToEighth(ft.x), y: snapToEighth(ft.y) };
+    let p = { x: snapToEighth(ft.x), y: snapToEighth(ft.y) };
     if (!state.measureFirstPoint) {
       state.measureFirstPoint = p;
       state.measurePreview = p;
     } else {
+      // Shift on the second click locks the line to horizontal or vertical.
+      if (e.shiftKey) p = axisLockTo(p, state.measureFirstPoint);
       const m = {
         id: genId(),
         x1: state.measureFirstPoint.x, y1: state.measureFirstPoint.y,
@@ -1918,12 +1927,14 @@ els.canvas.addEventListener('pointerdown', (e) => {
   }
 });
 
-// Track cursor for the preview line.
+// Track cursor for the preview line. Shift locks the preview to H/V axis.
 els.canvas.addEventListener('pointermove', (e) => {
   if (!state.measureMode || !state.measureFirstPoint) return;
   const rect = els.canvas.getBoundingClientRect();
   const ft = getMouseFt(e, rect);
-  state.measurePreview = { x: snapToEighth(ft.x), y: snapToEighth(ft.y) };
+  let p = { x: snapToEighth(ft.x), y: snapToEighth(ft.y) };
+  if (e.shiftKey) p = axisLockTo(p, state.measureFirstPoint);
+  state.measurePreview = p;
   renderMeasurements();
 });
 
@@ -1956,9 +1967,14 @@ let mDrag = null;
     if (!m) return;
     const rect = els.canvas.getBoundingClientRect();
     const ft = getMouseFt(e, rect);
-    const sx = snapToEighth(ft.x), sy = snapToEighth(ft.y);
-    if (mDrag.pt === 1) { m.x1 = sx; m.y1 = sy; }
-    else { m.x2 = sx; m.y2 = sy; }
+    let p = { x: snapToEighth(ft.x), y: snapToEighth(ft.y) };
+    // Shift locks the dragged endpoint to H/V relative to the OTHER endpoint.
+    if (e.shiftKey) {
+      const other = mDrag.pt === 1 ? { x: m.x2, y: m.y2 } : { x: m.x1, y: m.y1 };
+      p = axisLockTo(p, other);
+    }
+    if (mDrag.pt === 1) { m.x1 = p.x; m.y1 = p.y; }
+    else { m.x2 = p.x; m.y2 = p.y; }
     touch(m);
     renderMeasurements();
   });
