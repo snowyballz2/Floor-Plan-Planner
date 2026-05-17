@@ -1143,6 +1143,56 @@ function renderFloor() {
 // Single source of truth for shape rendering. viewBox 0..100 (stretched
 // to fit via preserveAspectRatio="none"); vector-effect="non-scaling-stroke"
 // keeps stroke a uniform 2px regardless of element size.
+// Compute the edge dimension labels for an item. Each entry positions a
+// callout on a specific bounding-box edge at a percentage along that edge.
+// L-shape edges have partial visibility (notch removes a portion), so the
+// label is positioned over the visible portion using the arm/leg dimension
+// rather than the total. Non-L shapes get just W on top, D on left.
+function getDimLabels(it, shape) {
+  if (shape === 'l') {
+    const nw = it.notchW != null ? it.notchW : it.w * 0.5;
+    const nd = it.notchD != null ? it.notchD : it.d * 0.5;
+    const armW = ftToInches(it.w - nw);
+    const armD = ftToInches(it.d - nd);
+    const totalW = ftToInches(it.w);
+    const totalD = ftToInches(it.d);
+    if (it.flipH) {
+      // Notch top-left: vert leg on right, top-edge visible portion is right side.
+      const topX  = ((it.w + nw) / it.w) * 50;
+      const leftY = ((it.d + nd) / it.d) * 50;
+      return [
+        { side:'top',    text:armW,   posPct:topX },
+        { side:'bottom', text:totalW },
+        { side:'left',   text:armD,   posPct:leftY, vertical:true },
+        { side:'right',  text:totalD, vertical:true },
+      ];
+    }
+    // Notch top-right: vert leg on left, top-edge visible portion is left side.
+    const topX   = ((it.w - nw) / it.w) * 50;
+    const rightY = ((it.d + nd) / it.d) * 50;
+    return [
+      { side:'top',    text:armW,   posPct:topX },
+      { side:'bottom', text:totalW },
+      { side:'left',   text:totalD, vertical:true },
+      { side:'right',  text:armD,   posPct:rightY, vertical:true },
+    ];
+  }
+  return [
+    { side:'top',  text:ftToInches(it.w) },
+    { side:'left', text:ftToInches(it.d), vertical:true },
+  ];
+}
+function dimCalloutHTML(opt) {
+  const pos = (opt.posPct != null ? opt.posPct : 50).toFixed(1);
+  const wm = opt.vertical ? ' writing-mode:vertical-rl;' : '';
+  let style;
+  if (opt.side === 'top')         style = `top:3px; left:${pos}%; transform:translateX(-50%);${wm}`;
+  else if (opt.side === 'bottom') style = `bottom:3px; left:${pos}%; transform:translateX(-50%);${wm}`;
+  else if (opt.side === 'left')   style = `left:3px; top:${pos}%; transform:translateY(-50%);${wm}`;
+  else if (opt.side === 'right')  style = `right:3px; top:${pos}%; transform:translateY(-50%);${wm}`;
+  return `<span class="dim-callout" style="${style}">${opt.text}</span>`;
+}
+
 function renderShapeSVG(it) {
   const fill = it.color;
   const stroke = 'rgba(0,0,0,0.55)';
@@ -1183,35 +1233,20 @@ function renderFurniture() {
     el.style.width = (it.w * f.pxPerFt) + 'px';
     el.style.height = (it.d * f.pxPerFt) + 'px';
     el.style.transform = `rotate(${it.rot}deg)`;
-    // For L-shape, constrain the text to the L's leg width so the label
-    // never floats over the notch region.
+    // For L-shape, constrain the title to the L's leg width so it never
+    // floats over the notch region.
     let labelStyle = '';
-    let dimCallouts = '';
     if (shape === 'l') {
       const nw = (it.notchW != null) ? it.notchW : it.w * 0.5;
-      const nd = (it.notchD != null) ? it.notchD : it.d * 0.5;
       const legPct = Math.max(15, ((it.w - nw) / it.w) * 100 - 4);
       labelStyle = `style="max-width:${legPct.toFixed(1)}%"`;
-      // Arm dimensions on the furniture itself: arm W centered over the
-      // vertical leg (upper portion, below the title), arm D centered along
-      // the horizontal arm.
-      const armW = ftToInches(it.w - nw);
-      const armD = ftToInches(it.d - nd);
-      const legCenterX = it.flipH
-        ? ((it.w + nw) / it.w) * 50
-        : ((it.w - nw) / it.w) * 50;
-      const armCenterY = ((it.d + nd) / it.d) * 50;
-      dimCallouts = `
-        <span class="dim-callout" style="left:${legCenterX.toFixed(1)}%; top:34%; transform:translate(-50%, -50%);">${armW}</span>
-        <span class="dim-callout" style="left:50%; top:${armCenterY.toFixed(1)}%; transform:translate(-50%, -50%);">${armD}</span>
-      `;
     }
+    const dimCallouts = getDimLabels(it, shape).map(dimCalloutHTML).join('');
     el.innerHTML = `
       ${renderShapeSVG(it)}
       <div class="rotate-stem"></div>
       <div class="furniture-inner">
         <span class="label" ${labelStyle}>${escHtml(it.label)}</span>
-        <span class="dims" ${labelStyle}>${ftToInches(it.w)} × ${ftToInches(it.d)}</span>
       </div>
       ${dimCallouts}
       <div class="handle rotate-handle" data-handle="rotate"></div>
