@@ -367,22 +367,42 @@
   }
 
   .properties {
-    position: fixed;
-    top: 60px;
-    right: 10px;
-    bottom: 34px;
-    width: 200px;
+    width: 220px;
     background: var(--paper-dim);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border-left: 1px solid var(--border);
     padding: 10px 12px 12px;
     overflow-y: auto;
     overflow-x: hidden;
-    z-index: 50;
-    box-shadow: 0 4px 16px rgba(26,35,50,0.18), 0 1px 4px rgba(26,35,50,0.08);
-    display: none;
+    flex-shrink: 0;
+    position: relative;
+    transition: width 0.15s ease, padding 0.15s ease;
   }
-  .properties.open { display: block; }
+  .properties.collapsed {
+    width: 28px;
+    padding: 8px 2px;
+    overflow: hidden;
+  }
+  .properties.collapsed #properties-content { display: none; }
+  .props-toggle {
+    position: sticky;
+    top: 0;
+    margin: 0 auto 6px 0;
+    display: block;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    color: var(--ink-soft);
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+    z-index: 5;
+  }
+  .props-toggle:hover { color: var(--ink); background: var(--paper-dim); }
+  .properties.collapsed .props-toggle { margin: 0 auto; }
   .properties h3 {
     font-size: 13px;
     font-weight: 600;
@@ -618,77 +638,77 @@
         <svg class="measure-layer" id="measure-layer" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
     </div>
-
-    <aside class="properties" id="properties">
-      <h3>
-        Properties
-        <span class="prop-header-btns">
-          <button type="button" class="prop-min" id="prop-min" title="Minimize">−</button>
-          <button type="button" class="prop-close" id="prop-close" title="Close (Esc)">×</button>
-        </span>
-      </h3>
-      <div id="prop-form">
-      <div class="field">
-        <label>Label</label>
-        <input type="text" id="prop-label" style="font-family:inherit;">
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Width</label>
-          <input type="text" inputmode="text" id="prop-w" placeholder="6'4&quot;">
-        </div>
-        <div class="field">
-          <label>Depth</label>
-          <input type="text" inputmode="text" id="prop-d" placeholder="6'8&quot;">
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>X</label>
-          <input type="text" inputmode="text" id="prop-x" placeholder="2'6&quot;">
-        </div>
-        <div class="field">
-          <label>Y</label>
-          <input type="text" inputmode="text" id="prop-y" placeholder="2'6&quot;">
-        </div>
-      </div>
-      <div class="field-row" id="notch-fields" style="display:none;">
-        <div class="field">
-          <label>Arm W</label>
-          <input type="text" inputmode="text" id="prop-nw" placeholder="3'">
-        </div>
-        <div class="field">
-          <label>Arm D</label>
-          <input type="text" inputmode="text" id="prop-nd" placeholder="3'">
-        </div>
-      </div>
-      <div class="field">
-        <label>Rotation</label>
-        <input type="number" id="prop-rot" step="15">
-        <div class="rot-row">
-          <button type="button" class="rot-btn" id="prop-rot-minus">− 15°</button>
-          <button type="button" class="rot-btn" id="prop-rot-plus">+ 15°</button>
-        </div>
-      </div>
-      <div class="field">
-        <label>Color</label>
-        <div class="color-swatches" id="color-swatches"></div>
-      </div>
-      <div class="field" id="move-floor-field">
-        <label>Move to floor</label>
-        <div id="move-floor-row" style="display:grid;gap:4px;"></div>
-      </div>
-      <div class="action-row">
-        <button id="prop-flip-btn">Flip H</button>
-        <button id="prop-dup-btn">Duplicate</button>
-      </div>
-      <div class="action-row">
-        <button class="danger" id="prop-delete-btn" style="grid-column:span 2;">Delete</button>
-      </div>
-      </div>
-    </aside>
-    <button type="button" class="prop-tab" id="prop-tab" title="Restore Properties">▸ Properties</button>
   </div>
+
+  <aside class="properties" id="properties">
+    <button type="button" class="props-toggle" id="props-toggle" title="Collapse">›</button>
+    <div id="properties-content">
+      <h3>Properties</h3>
+      <div class="empty" id="prop-empty">
+        Click a furniture item to edit.<br><br>
+        <kbd>R</kbd> rotate · <kbd>F</kbd> flip · <kbd>⌫</kbd> delete · <kbd>⌘D</kbd> duplicate · <kbd>↑↓←→</kbd> nudge
+      </div>
+      <div id="prop-form" style="display:none;">
+        <div class="field">
+          <label>Label</label>
+          <input type="text" id="prop-label" style="font-family:inherit;">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Width</label>
+            <input type="text" inputmode="text" id="prop-w" placeholder="6'4&quot;">
+          </div>
+          <div class="field">
+            <label>Depth</label>
+            <input type="text" inputmode="text" id="prop-d" placeholder="6'8&quot;">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>X</label>
+            <input type="text" inputmode="text" id="prop-x" placeholder="2'6&quot;">
+          </div>
+          <div class="field">
+            <label>Y</label>
+            <input type="text" inputmode="text" id="prop-y" placeholder="2'6&quot;">
+          </div>
+        </div>
+        <div class="field-row" id="notch-fields" style="display:none;">
+          <div class="field">
+            <label>Arm W</label>
+            <input type="text" inputmode="text" id="prop-nw" placeholder="3'">
+          </div>
+          <div class="field">
+            <label>Arm D</label>
+            <input type="text" inputmode="text" id="prop-nd" placeholder="3'">
+          </div>
+        </div>
+        <div class="field">
+          <label>Rotation</label>
+          <input type="number" id="prop-rot" step="15">
+          <div class="rot-row">
+            <button type="button" class="rot-btn" id="prop-rot-minus">− 15°</button>
+            <button type="button" class="rot-btn" id="prop-rot-plus">+ 15°</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Color</label>
+          <div class="color-swatches" id="color-swatches"></div>
+        </div>
+        <div class="field" id="move-floor-field">
+          <label>Move to floor</label>
+          <div id="move-floor-row" style="display:grid;gap:4px;"></div>
+        </div>
+        <div class="action-row">
+          <button id="prop-flip-btn">Flip H</button>
+          <button id="prop-dup-btn">Duplicate</button>
+        </div>
+        <div class="action-row">
+          <button class="danger" id="prop-delete-btn" style="grid-column:span 2;">Delete</button>
+        </div>
+      </div>
+    </div>
+  </aside>
 </main>
 
 <div class="status">
@@ -1590,21 +1610,15 @@ function renderFurniture() {
 
 function renderProperties() {
   const it = findItem(state.selectedId);
-  const panel = document.getElementById('properties');
-  const tab = document.getElementById('prop-tab');
+  const empty = document.getElementById('prop-empty');
+  const form  = document.getElementById('prop-form');
   if (!it) {
-    panel.classList.remove('open');
-    tab.classList.remove('show');
+    if (empty) empty.style.display = '';
+    if (form)  form.style.display  = 'none';
     return;
   }
-  if (state.panelMinimized) {
-    panel.classList.remove('open');
-    tab.classList.add('show');
-    tab.textContent = '▸ ' + it.label;
-    return;
-  }
-  panel.classList.add('open');
-  tab.classList.remove('show');
+  if (empty) empty.style.display = 'none';
+  if (form)  form.style.display  = '';
   const setIfBlur = (id, val) => {
     const el = document.getElementById(id);
     if (document.activeElement !== el) el.value = val;
@@ -2036,11 +2050,6 @@ bindArm('prop-nd', 'd', 'notchD');
   });
 });
 
-document.getElementById('prop-close').addEventListener('click', () => {
-  state.selectedId = null;
-  renderFurniture();
-});
-
 function applySidebarCollapsed() {
   const sb = document.getElementById('sidebar');
   sb.classList.toggle('collapsed', state.sidebarCollapsed);
@@ -2053,14 +2062,19 @@ document.getElementById('sidebar-toggle').addEventListener('click', () => {
   scheduleSave();
 });
 
-document.getElementById('prop-min').addEventListener('click', () => {
-  state.panelMinimized = true;
-  renderProperties();
-  scheduleSave();
-});
-document.getElementById('prop-tab').addEventListener('click', () => {
-  state.panelMinimized = false;
-  renderProperties();
+// Right-side Properties panel collapse. Reuses state.panelMinimized so saved
+// preferences carry over from the prior floating-overlay implementation.
+function applyPropsCollapsed() {
+  const p = document.getElementById('properties');
+  p.classList.toggle('collapsed', !!state.panelMinimized);
+  const t = document.getElementById('props-toggle');
+  // Arrow points outward when collapsed (toward content), inward when open.
+  t.textContent = state.panelMinimized ? '‹' : '›';
+  t.title = state.panelMinimized ? 'Expand' : 'Collapse';
+}
+document.getElementById('props-toggle').addEventListener('click', () => {
+  state.panelMinimized = !state.panelMinimized;
+  applyPropsCollapsed();
   scheduleSave();
 });
 
@@ -2400,6 +2414,7 @@ document.getElementById('sync-clear').addEventListener('click', () => {
   await load();
   renderSidebar();
   applySidebarCollapsed();
+  applyPropsCollapsed();
   renderFloor();
   setTimeout(() => {
     if (state.zoom === 1.0) {
