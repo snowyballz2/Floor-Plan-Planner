@@ -1473,7 +1473,7 @@ function scheduleAutoSync() {
   if (suppressAutoSync) return;
   if (!syncConfigured()) return;
   if (autoSyncTimer) clearTimeout(autoSyncTimer);
-  autoSyncTimer = setTimeout(() => doSync({ manual: false }), 4000);
+  autoSyncTimer = setTimeout(() => doSync({ manual: false }), 30000);
 }
 
 function setSyncStatus(msg, kind) {
