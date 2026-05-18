@@ -662,6 +662,7 @@
     <label class="toggle">
       <input type="checkbox" id="labels-toggle" checked> Labels
     </label>
+    <button id="undo-btn" title="Undo (Cmd+Z)" disabled style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">↶ Undo</button>
     <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
     <button id="room-label-add-btn" title="Add room label (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🏷 Label</button>
   </div>
@@ -1125,7 +1126,63 @@ async function save() {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
     }
     scheduleAutoSync();
+    pushHistory();
   } catch (e) { console.warn('Save failed:', e); }
+}
+
+// ============================================================
+// UNDO HISTORY
+// ============================================================
+// 30-entry ring buffer of state snapshots (JSON-serialized). pushHistory is
+// called after every save; undo() pops the most recent snapshot (= current
+// state) and restores the second-most-recent (= previous state).
+const HISTORY_MAX = 30;
+let history = [];
+let skipNextHistory = false;
+
+function snapshotState() {
+  return JSON.stringify({
+    f:  state.furniture,
+    df: state.deletedItems,
+    m:  state.measurements,
+    dm: state.deletedMeasurements,
+    r:  state.roomLabels,
+    dr: state.deletedRoomLabels,
+    fl: state.floors,
+    dfl: state.deletedFloors,
+  });
+}
+function pushHistory() {
+  if (skipNextHistory) { skipNextHistory = false; return; }
+  const snap = snapshotState();
+  if (history.length > 0 && history[history.length - 1] === snap) return;
+  history.push(snap);
+  if (history.length > HISTORY_MAX) history.shift();
+  updateUndoButton();
+}
+function undo() {
+  if (history.length < 2) return;
+  history.pop();                          // discard current state
+  const prev = JSON.parse(history[history.length - 1]);
+  state.furniture            = prev.f;
+  state.deletedItems         = prev.df;
+  state.measurements         = prev.m;
+  state.deletedMeasurements  = prev.dm;
+  state.roomLabels           = prev.r;
+  state.deletedRoomLabels    = prev.dr;
+  state.floors               = prev.fl;
+  state.deletedFloors        = prev.dfl;
+  state.selectedId = null;
+  state.selectedMeasurementId = null;
+  state.selectedRoomLabelId = null;
+  skipNextHistory = true;                 // don't re-push on the save below
+  renderFloor();
+  scheduleSave();
+  updateUndoButton();
+}
+function updateUndoButton() {
+  const btn = document.getElementById('undo-btn');
+  if (btn) btn.disabled = history.length < 2;
 }
 async function load() {
   try {
@@ -2411,6 +2468,12 @@ document.getElementById('prop-delete-btn').addEventListener('click', () => state
 // KEYBOARD
 // ============================================================
 window.addEventListener('keydown', (e) => {
+  // Cmd+Z / Ctrl+Z = undo (allowed even when an input is focused).
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+    e.preventDefault();
+    undo();
+    return;
+  }
   if (e.target.matches('input, select, textarea')) return;
   // Measure / label modes: Esc exits.
   if (state.measureMode && e.key === 'Escape') {
@@ -2525,6 +2588,7 @@ function applyLabelsVisible() {
   // Re-render floor so the cleaned-PNG variant kicks in for built-in floors.
   if (typeof renderFloor === 'function') renderFloor();
 }
+document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('labels-toggle').addEventListener('change', (e) => {
   state.labelsVisible = e.target.checked;
   applyLabelsVisible();
@@ -2749,6 +2813,7 @@ document.getElementById('sync-clear').addEventListener('click', () => {
 // ============================================================
 (async function init() {
   await load();
+  pushHistory();   // initial snapshot — undo can revert the first mutation back to load state
   renderSidebar();
   applySidebarCollapsed();
   applyPropsCollapsed();
