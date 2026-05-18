@@ -877,6 +877,7 @@
     </div>
     <div class="actions">
       <button id="sync-clear" style="color:var(--danger);border-color:rgba(220,38,38,0.3);margin-right:auto;">Clear creds</button>
+      <button id="sync-size">Size check</button>
       <button id="sync-test">Test connection</button>
       <button id="sync-close">Close</button>
       <button class="primary" id="sync-now">Save &amp; Sync</button>
@@ -2806,6 +2807,33 @@ document.getElementById('sync-now').addEventListener('click', async () => {
   localStorage.setItem(SYNC_TOKEN_KEY, token);
   await doSync({ manual: true });
 });
+document.getElementById('sync-size').addEventListener('click', () => {
+  const diag = document.getElementById('sync-diag');
+  const log = (s) => { diag.textContent += s + '\n'; };
+  diag.textContent = '';
+  const payload = getSyncPayload();
+  const total = JSON.stringify(payload).length;
+  log(`TOTAL payload: ${total} bytes (${(total/1024).toFixed(1)} KB)`);
+  if (total > 900_000) log('!! near 1 MB Gist limit — sync may fail');
+  log('');
+  log('--- breakdown ---');
+  for (const k of Object.keys(payload)) {
+    const s = JSON.stringify(payload[k]).length;
+    log(`${k.padEnd(22)}  ${s.toLocaleString()} bytes`);
+  }
+  // Per-floor custom-image sizes (the usual bloat source)
+  if (payload.floors && Object.keys(payload.floors).length) {
+    log('');
+    log('--- per custom floor ---');
+    for (const id of Object.keys(payload.floors)) {
+      const f = payload.floors[id];
+      const srcSize = f.src ? f.src.length : 0;
+      log(`floor "${f.name || id}"  src=${srcSize.toLocaleString()} bytes`);
+    }
+  }
+  log('\n(no API calls made — safe.)');
+});
+
 document.getElementById('sync-test').addEventListener('click', async () => {
   const diag = document.getElementById('sync-diag');
   const log = (s) => { diag.textContent += s + '\n'; diag.scrollTop = diag.scrollHeight; };
