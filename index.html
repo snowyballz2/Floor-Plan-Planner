@@ -871,8 +871,13 @@
       <label>Status</label>
       <div id="sync-status" style="font-size:11px;color:var(--ink-faint);font-family:'JetBrains Mono',monospace;min-height:14px;">Not configured</div>
     </div>
+    <div class="field">
+      <label>Diagnostic</label>
+      <div id="sync-diag" style="font-size:11px;color:var(--ink-faint);font-family:'JetBrains Mono',monospace;white-space:pre-wrap;max-height:140px;overflow:auto;background:var(--paper);padding:6px;border:1px solid var(--border);border-radius:4px;">Click "Test connection" to inspect.</div>
+    </div>
     <div class="actions">
       <button id="sync-clear" style="color:var(--danger);border-color:rgba(220,38,38,0.3);margin-right:auto;">Clear creds</button>
+      <button id="sync-test">Test connection</button>
       <button id="sync-close">Close</button>
       <button class="primary" id="sync-now">Save &amp; Sync</button>
     </div>
@@ -2801,6 +2806,54 @@ document.getElementById('sync-now').addEventListener('click', async () => {
   localStorage.setItem(SYNC_TOKEN_KEY, token);
   await doSync({ manual: true });
 });
+document.getElementById('sync-test').addEventListener('click', async () => {
+  const diag = document.getElementById('sync-diag');
+  const log = (s) => { diag.textContent += s + '\n'; diag.scrollTop = diag.scrollHeight; };
+  diag.textContent = '';
+  const gistId = document.getElementById('sync-gist-id').value.trim();
+  const token  = document.getElementById('sync-token-input').value.trim();
+  if (!gistId || !token) { log('!! enter Gist ID + token first'); return; }
+  log(`gist id: ${gistId}`);
+  log(`token prefix: ${token.slice(0, 12)}…`);
+  const payloadSize = JSON.stringify(getSyncPayload()).length;
+  log(`payload size: ${payloadSize} bytes (${(payloadSize/1024).toFixed(1)} KB)`);
+  if (payloadSize > 900_000) log('!! WARNING: payload close to 1 MB Gist file limit');
+  // 1. GET test
+  log('\n--- GET (auth + ownership check) ---');
+  try {
+    const r = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    log(`status: ${r.status} ${r.statusText}`);
+    const body = await r.text();
+    if (r.ok) {
+      const j = JSON.parse(body);
+      log(`owner: ${j.owner ? j.owner.login : '(none)'}`);
+      log(`public: ${j.public}`);
+      log(`files: ${Object.keys(j.files || {}).join(', ')}`);
+    } else {
+      log(`body: ${body.slice(0, 300)}`);
+    }
+  } catch (e) {
+    log(`fetch error: ${e.message}`);
+  }
+  // 2. PATCH test (tiny payload)
+  log('\n--- PATCH (write test) ---');
+  try {
+    const r = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { 'floor-plan-planner-test.txt': { content: 'sync-test ' + Date.now() } } })
+    });
+    log(`status: ${r.status} ${r.statusText}`);
+    const body = await r.text();
+    if (!r.ok) log(`body: ${body.slice(0, 400)}`);
+    else log('OK');
+  } catch (e) {
+    log(`fetch error: ${e.message}`);
+  }
+});
+
 document.getElementById('sync-clear').addEventListener('click', () => {
   if (!confirm('Forget Gist ID and token on this device? (Remote data untouched.)')) return;
   localStorage.removeItem(SYNC_GIST_ID_KEY);
