@@ -3080,7 +3080,6 @@ let winDrag = null;
 (function wireWindowLayer() {
   const layer = document.getElementById('window-layer');
   layer.addEventListener('pointerdown', (e) => {
-    if (state.windowMode) return; // placement handled by the canvas handler
     const el = e.target.closest('.win-pin');
     if (!el) return;
     const w = findWindow(+el.dataset.id);
@@ -3334,7 +3333,6 @@ let swDrag = null;
 (function wireSwitchLayer() {
   const layer = document.getElementById('switch-layer');
   layer.addEventListener('pointerdown', (e) => {
-    if (state.switchMode) return; // placement handled by the canvas handler
     const el = e.target.closest('.sw-pin');
     if (!el) return;
     const s = findSwitch(+el.dataset.id);
