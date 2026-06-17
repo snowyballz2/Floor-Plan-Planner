@@ -3377,6 +3377,9 @@ function applyView(v, skipSave) {
   document.querySelectorAll('#view-tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   document.body.classList.remove('view-furniture', 'view-windows', 'view-switches');
   document.body.classList.add('view-' + v);
+  // Relabel the Clear button so it's obvious it only clears the active layer.
+  const clearBtn = document.getElementById('clear-floor');
+  if (clearBtn) clearBtn.textContent = 'Clear ' + (v === 'windows' ? 'windows' : v === 'switches' ? 'switches' : 'furniture');
   // The view drives placement mode for its layer.
   state.windowMode = (v === 'windows');
   state.switchMode = (v === 'switches');
@@ -3675,16 +3678,40 @@ document.getElementById('labels-toggle').addEventListener('change', (e) => {
   scheduleSave();
 });
 
+// Clear applies to the ACTIVE view's layer on the CURRENT floor only.
+// Each item is tombstoned so the deletion syncs to other devices.
 document.getElementById('clear-floor').addEventListener('click', () => {
-  if (!confirm(`Clear all furniture from floor ${state.currentFloor}?`)) return;
-  // Tombstone each item so the deletion syncs to other devices.
+  const floor = state.currentFloor;
+  const fname = getFloor(floor).name || ('floor ' + floor);
   const now = Date.now();
-  if (!state.deletedItems[state.currentFloor]) state.deletedItems[state.currentFloor] = {};
-  for (const it of state.furniture[state.currentFloor]) {
-    state.deletedItems[state.currentFloor][it.id] = now;
+  const plural = (n, w) => `${n} ${w}${n !== 1 ? 's' : ''}`;
+  if (state.view === 'windows') {
+    const list = state.windows[floor] || [];
+    if (!list.length) { alert(`No windows on ${fname}.`); return; }
+    if (!confirm(`Clear all ${plural(list.length, 'window')} from ${fname}?`)) return;
+    if (!state.deletedWindows[floor]) state.deletedWindows[floor] = {};
+    for (const w of list) state.deletedWindows[floor][w.id] = now;
+    state.windows[floor] = [];
+    state.selectedWindowId = null;
+    renderWindows();
+  } else if (state.view === 'switches') {
+    const list = state.switches[floor] || [];
+    if (!list.length) { alert(`No switch locations on ${fname}.`); return; }
+    if (!confirm(`Clear all ${plural(list.length, 'switch location')} from ${fname}?`)) return;
+    if (!state.deletedSwitches[floor]) state.deletedSwitches[floor] = {};
+    for (const s of list) state.deletedSwitches[floor][s.id] = now;
+    state.switches[floor] = [];
+    state.selectedSwitchId = null;
+    renderSwitches();
+  } else {
+    const list = state.furniture[floor] || [];
+    if (!list.length) { alert(`No furniture on ${fname}.`); return; }
+    if (!confirm(`Clear all ${plural(list.length, 'furniture item')} from ${fname}?`)) return;
+    if (!state.deletedItems[floor]) state.deletedItems[floor] = {};
+    for (const it of list) state.deletedItems[floor][it.id] = now;
+    state.furniture[floor] = [];
+    state.selectedId = null;
   }
-  state.furniture[state.currentFloor] = [];
-  state.selectedId = null;
   renderFurniture();
   scheduleSave();
 });
