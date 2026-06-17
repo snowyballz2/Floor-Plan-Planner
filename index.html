@@ -2620,6 +2620,15 @@ let pinchStart = null;
     if (!wasTap) { if (t && e.pointerId === t.id) tap = null; return; }
     tap = null;
     const rect = els.canvas.getBoundingClientRect();
+    // If a properties inspector is open, a tap "clicks out" — close it instead of
+    // adding anything. Only a tap with nothing selected drops a new pin.
+    if (state.selectedWindowId != null || state.selectedSwitchId != null || state.selectedId != null) {
+      state.selectedWindowId = null;
+      state.selectedSwitchId = null;
+      state.selectedId = null;
+      renderWindows(); renderSwitches(); renderFurniture();
+      return;
+    }
     if (t.x < rect.left || t.x > rect.right || t.y < rect.top || t.y > rect.bottom) return; // tapped off the plan
     const ft = getMouseFt({ clientX: t.x, clientY: t.y }, rect);
     if (state.windowMode) {
@@ -2630,11 +2639,6 @@ let pinchStart = null;
       if (!state.switches[state.currentFloor]) state.switches[state.currentFloor] = [];
       const sw = newSwitch(snapToEighth(ft.x), snapToEighth(ft.y));
       state.switches[state.currentFloor].push(sw); selectSwitch(sw.id); scheduleSave();
-    } else {
-      state.selectedId = null;
-      if (state.selectedWindowId != null) { state.selectedWindowId = null; renderWindows(); }
-      if (state.selectedSwitchId != null) { state.selectedSwitchId = null; renderSwitches(); }
-      renderFurniture();
     }
   }
   wrap.addEventListener('pointerup', end);
