@@ -271,6 +271,59 @@
   .canvas-wrapper.measure-mode .furniture-layer { pointer-events: none; }
   .canvas-wrapper.label-mode { cursor: crosshair; }
   .canvas-wrapper.label-mode .furniture-layer { pointer-events: none; }
+
+  /* ---- Windows (blind-measurement pins + inspector) ---- */
+  .canvas-wrapper.window-mode { cursor: crosshair; }
+  .canvas-wrapper.window-mode .furniture-layer { pointer-events: none; }
+  .window-layer { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+  .win-pin {
+    position: absolute; transform: translate(-50%, -50%);
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+    background: var(--warning); border: 2px solid rgba(255,255,255,0.9);
+    box-shadow: var(--shadow); cursor: grab; pointer-events: auto;
+    font-family: inherit; user-select: none; touch-action: none;
+  }
+  .win-pin.ok { background: var(--accent); }
+  .win-pin.pending { background: var(--warning); }
+  .win-pin.warn { box-shadow: 0 0 0 3px var(--danger), var(--shadow); }
+  .win-pin.sel { outline: 3px solid var(--accent-soft); outline-offset: 2px; z-index: 8; }
+  .win-pin:active { cursor: grabbing; }
+  #window-inspector { font-size: 13px; }
+  .wi-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .wi-badge { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: #fff; background: var(--warning); flex: 0 0 auto; }
+  .wi-badge.ok { background: var(--accent); }
+  .wi-label { flex: 1; min-width: 0; font: inherit; font-size: 14px; font-weight: 600; padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); }
+  .wi-del { border: 1px solid var(--border); background: transparent; color: var(--danger); border-radius: 5px; padding: 4px 8px; cursor: pointer; font-size: 13px; }
+  .wi-del:hover { border-color: var(--danger); }
+  .wi-field { margin-bottom: 12px; }
+  .wi-field > label { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); margin-bottom: 6px; }
+  .wi-in { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); }
+  .wi-seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .wi-seg button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 7px 6px; font: inherit; font-size: 12px; cursor: pointer; }
+  .wi-seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
+  .wi-triple { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .wi-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .wi-num { display: flex; flex-direction: column; gap: 3px; }
+  .wi-num span { font-size: 10px; color: var(--ink-faint); text-align: center; }
+  .wi-num input { width: 100%; font: inherit; font-size: 13px; text-align: center; padding: 6px 4px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); }
+  .wi-readout { margin: 4px 0 12px; padding: 11px 12px; background: var(--paper-dim); border: 1px solid var(--border); border-radius: 7px; }
+  .wi-order { font-size: 20px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .wi-order span { color: var(--ink-faint); margin: 0 5px; }
+  .wi-dim { font-size: 13px; font-weight: 400; color: var(--ink-faint); }
+  .wi-note { font-size: 11px; color: var(--ink-soft); margin-top: 6px; line-height: 1.45; }
+  .wi-flag { margin-top: 8px; font-size: 11.5px; padding: 7px 9px; border-radius: 5px; line-height: 1.4; }
+  .wi-flag[hidden] { display: none; }
+  .wi-flag.bad { background: #fdecea; border: 1px solid rgba(220,38,38,0.4); color: #a31212; }
+  .wi-flag.good { background: var(--accent-faint); border: 1px solid rgba(13,148,136,0.35); color: #0a6b5f; }
+  .wi-notes { width: 100%; font: inherit; font-size: 12.5px; min-height: 50px; resize: vertical; padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); }
+  .wi-btn { width: 100%; font: inherit; font-size: 12.5px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); cursor: pointer; }
+  .wi-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .wi-howto { margin-top: 4px; }
+  .wi-howto summary { font-size: 11.5px; color: var(--ink-soft); cursor: pointer; }
+  .wi-howto ul { margin: 8px 0 2px; padding-left: 18px; font-size: 11.5px; color: var(--ink-soft); line-height: 1.6; }
+
   /* "Show labels" toggle: hides item titles + edge dimension callouts + room labels. */
   body.no-labels .furniture .label,
   body.no-labels .furniture .dims,
@@ -665,6 +718,7 @@
     <button id="undo-btn" title="Undo (Cmd+Z)" disabled style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">↶ Undo</button>
     <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
     <button id="room-label-add-btn" title="Add room label (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🏷 Label</button>
+    <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟 Windows</button>
   </div>
 
   <div class="header-spacer"></div>
@@ -688,6 +742,7 @@
         <div class="furniture-layer" id="furniture-layer"></div>
         <svg class="measure-layer" id="measure-layer" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="room-label-layer" id="room-label-layer"></div>
+        <div class="window-layer" id="window-layer"></div>
       </div>
     </div>
   </div>
@@ -696,6 +751,7 @@
     <button type="button" class="props-toggle" id="props-toggle" title="Collapse">›</button>
     <div id="properties-content">
       <h3>Properties</h3>
+      <div id="window-inspector" style="display:none;"></div>
       <div class="empty" id="prop-empty">
         Click a furniture item to edit.<br><br>
         <kbd>R</kbd> rotate · <kbd>F</kbd> flip · <kbd>⌫</kbd> delete · <kbd>⌘D</kbd> duplicate · <kbd>↑↓←→</kbd> nudge
@@ -1080,6 +1136,11 @@ const state = {
   sidebarCollapsed: false,
   panelMinimized: false,
   labelsVisible: true,
+  // Windows — per-floor blind-measurement pins (same lifecycle as room labels).
+  windows: { 1: [], 2: [], 3: [], 4: [] },
+  deletedWindows: { 1: {}, 2: {}, 3: {}, 4: {} },
+  selectedWindowId: null,
+  windowMode: false,
 };
 
 // Globally-unique item IDs (random within Number.MAX_SAFE_INTEGER). Avoids
@@ -1102,6 +1163,10 @@ function tombstoneRoomLabel(floor, id) {
   if (!state.deletedRoomLabels[floor]) state.deletedRoomLabels[floor] = {};
   state.deletedRoomLabels[floor][id] = Date.now();
 }
+function tombstoneWindow(floor, id) {
+  if (!state.deletedWindows[floor]) state.deletedWindows[floor] = {};
+  state.deletedWindows[floor][id] = Date.now();
+}
 
 // ============================================================
 // STORAGE
@@ -1121,6 +1186,8 @@ async function save() {
       deletedMeasurements: state.deletedMeasurements,
       roomLabels: state.roomLabels,
       deletedRoomLabels: state.deletedRoomLabels,
+      windows: state.windows,
+      deletedWindows: state.deletedWindows,
       floors: state.floors,
       deletedFloors: state.deletedFloors,
       currentFloor: state.currentFloor,
@@ -1157,6 +1224,8 @@ function snapshotState() {
     dm: state.deletedMeasurements,
     r:  state.roomLabels,
     dr: state.deletedRoomLabels,
+    wn: state.windows,
+    dwn: state.deletedWindows,
     fl: state.floors,
     dfl: state.deletedFloors,
   });
@@ -1179,11 +1248,14 @@ function undo() {
   state.deletedMeasurements  = prev.dm;
   state.roomLabels           = prev.r;
   state.deletedRoomLabels    = prev.dr;
+  state.windows              = prev.wn || state.windows;
+  state.deletedWindows       = prev.dwn || state.deletedWindows;
   state.floors               = prev.fl;
   state.deletedFloors        = prev.dfl;
   state.selectedId = null;
   state.selectedMeasurementId = null;
   state.selectedRoomLabelId = null;
+  state.selectedWindowId = null;
   skipNextHistory = true;                 // don't re-push on the save below
   renderFloor();
   scheduleSave();
@@ -1213,6 +1285,13 @@ async function load() {
     if (data.deletedMeasurements) state.deletedMeasurements = data.deletedMeasurements;
     if (data.roomLabels) state.roomLabels = data.roomLabels;
     if (data.deletedRoomLabels) state.deletedRoomLabels = data.deletedRoomLabels;
+    if (data.windows) state.windows = data.windows;
+    if (data.deletedWindows) state.deletedWindows = data.deletedWindows;
+    for (const wf of ['1', '2', '3', '4']) {
+      if (!state.windows[wf]) state.windows[wf] = [];
+      if (!state.deletedWindows[wf]) state.deletedWindows[wf] = {};
+      for (const w of state.windows[wf]) { if (w._ts == null) w._ts = 0; }
+    }
     if (data.floors) state.floors = data.floors;
     if (data.deletedFloors) state.deletedFloors = data.deletedFloors;
     if (data.currentFloor) state.currentFloor = String(data.currentFloor);
@@ -1272,6 +1351,8 @@ function getSyncPayload() {
     deletedMeasurements: state.deletedMeasurements,
     roomLabels: state.roomLabels,
     deletedRoomLabels: state.deletedRoomLabels,
+    windows: state.windows,
+    deletedWindows: state.deletedWindows,
     floors: state.floors,
     deletedFloors: state.deletedFloors,
   };
@@ -1375,6 +1456,36 @@ function mergeSyncData(remote) {
       }
       state.roomLabels[f]        = survivors;
       state.deletedRoomLabels[f] = mergedDel;
+    }
+  }
+  // Merge windows with the same LWW + tombstone strategy.
+  if (remote.windows) {
+    for (const f of Object.keys(remote.windows)) {
+      const localItems  = state.windows[f]  || [];
+      const remoteItems = remote.windows[f] || [];
+      const localDel    = state.deletedWindows[f]                  || {};
+      const remoteDel   = (remote.deletedWindows && remote.deletedWindows[f]) || {};
+      const mergedDel = { ...localDel };
+      for (const id of Object.keys(remoteDel)) {
+        if (!mergedDel[id] || remoteDel[id] > mergedDel[id]) { mergedDel[id] = remoteDel[id]; changed = true; }
+      }
+      const byId = {};
+      for (const w of localItems)  byId[w.id] = w;
+      for (const w of remoteItems) {
+        const ex = byId[w.id];
+        const rTs = w._ts || 0;
+        if (!ex) { byId[w.id] = w; changed = true; }
+        else if (rTs > (ex._ts || 0)) { byId[w.id] = w; changed = true; }
+      }
+      const survivors = [];
+      for (const id of Object.keys(byId)) {
+        const w = byId[id];
+        const tomb = mergedDel[id];
+        if (tomb && tomb >= (w._ts || 0)) { changed = true; continue; }
+        survivors.push(w);
+      }
+      state.windows[f]        = survivors;
+      state.deletedWindows[f] = mergedDel;
     }
   }
   // Merge floors: per-floor LWW on the override record, plus tombstones.
@@ -1588,6 +1699,7 @@ function renderFloor() {
   renderFurniture();
   renderMeasurements();
   renderRoomLabels();
+  renderWindows();
 }
 
 // ============================================================
@@ -1636,6 +1748,7 @@ function renderFloorTabs() {
       state.currentFloor = f.id;
       state.selectedId = null;
       state.selectedMeasurementId = null;
+      state.selectedWindowId = null;
       renderFloor();
       scheduleSave();
     });
@@ -1847,6 +1960,19 @@ function renderProperties() {
   const it = findItem(state.selectedId);
   const empty = document.getElementById('prop-empty');
   const form  = document.getElementById('prop-form');
+  // Window selection owns the panel — but yields if furniture/measurement/label is selected.
+  const winInsp = document.getElementById('window-inspector');
+  if (state.selectedWindowId != null && (state.selectedId != null || state.selectedMeasurementId != null || state.selectedRoomLabelId != null)) {
+    state.selectedWindowId = null;
+    renderWindows();
+  }
+  if (state.selectedWindowId != null) {
+    if (empty) empty.style.display = 'none';
+    if (form)  form.style.display  = 'none';
+    if (winInsp) { winInsp.style.display = ''; renderWindowInspector(winInsp); }
+    return;
+  }
+  if (winInsp) winInsp.style.display = 'none';
   if (!it) {
     if (empty) empty.style.display = '';
     if (form)  form.style.display  = 'none';
@@ -2144,6 +2270,19 @@ function axisLockTo(pt, from) {
 }
 
 els.canvas.addEventListener('pointerdown', (e) => {
+  // In window mode, canvas clicks drop a window-measurement pin.
+  if (state.windowMode) {
+    if (e.target.closest('.win-pin')) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    if (!state.windows[state.currentFloor]) state.windows[state.currentFloor] = [];
+    const w = newWindow(snapToEighth(ft.x), snapToEighth(ft.y));
+    state.windows[state.currentFloor].push(w);
+    selectWindow(w.id);
+    scheduleSave();
+    e.preventDefault();
+    return;
+  }
   // In label mode, canvas clicks place a new room label.
   if (state.labelMode) {
     if (e.target.closest('.room-label')) return; // existing label handles its own click
@@ -2198,6 +2337,7 @@ els.canvas.addEventListener('pointerdown', (e) => {
   }
   if (!e.target.closest('.furniture')) {
     state.selectedId = null;
+    if (state.selectedWindowId != null) { state.selectedWindowId = null; renderWindows(); }
     renderFurniture();
   }
 });
@@ -2276,6 +2416,10 @@ let mDrag = null;
       state.labelMode = false;
       window.__applyLabelMode && window.__applyLabelMode();
     }
+    if (state.measureMode && state.windowMode) {
+      state.windowMode = false;
+      window.__applyWindowMode && window.__applyWindowMode();
+    }
     applyMode();
     renderMeasurements();
   });
@@ -2298,6 +2442,10 @@ let mDrag = null;
       state.measurePreview = null;
       window.__applyMeasureMode && window.__applyMeasureMode();
       renderMeasurements();
+    }
+    if (state.labelMode && state.windowMode) {
+      state.windowMode = false;
+      window.__applyWindowMode && window.__applyWindowMode();
     }
     applyMode();
   });
@@ -2353,6 +2501,296 @@ let rlDrag = null;
       scheduleSave();
     }
   });
+})();
+
+// ============================================================
+// WINDOWS (blind measurements)
+// ============================================================
+// A per-floor layer of window/opening pins, each carrying blind-measurement
+// data: 3 widths (top/mid/bottom), 3 heights (left/ctr/right), mount type,
+// recess depth, diagonals (square check), outside-mount coverage, notes.
+// Same lifecycle as room labels: save / load / undo / sync / tombstone.
+// Positions stored in feet (x,y); measurements in inches.
+const WINDOW_TYPES = ['Window', 'Sliding glass door', 'Door', 'Door sidelight'];
+
+function currentWindows() { return state.windows[state.currentFloor] || []; }
+function findWindow(id) { return currentWindows().find(w => w.id === id); }
+function winEscHtml(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+function winEscAttr(s) { return (s || '').replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+function newWindow(x, y) {
+  const f = getFloor(state.currentFloor);
+  const n = currentWindows().length + 1;
+  const base = (f.name || ('Floor ' + state.currentFloor)).replace(/\s+/g, '');
+  return {
+    id: genId(), x, y,
+    label: base + '-W' + n,
+    type: 'Window', mount: 'inside',
+    w: [null, null, null], h: [null, null, null],
+    depth: null, diag: [null, null],
+    overlapW: 6, overlapH: 3,
+    notes: '', _ts: Date.now(),
+  };
+}
+
+function selectWindow(id) {
+  state.selectedWindowId = id;
+  state.selectedId = null;
+  state.selectedMeasurementId = null;
+  state.selectedRoomLabelId = null;
+  renderFurniture();   // re-renders right panel (shows window inspector via renderProperties)
+  renderMeasurements();
+  renderRoomLabels();
+  renderWindows();
+}
+
+function deleteWindow(id) {
+  const items = state.windows[state.currentFloor];
+  if (!items) return;
+  const idx = items.findIndex(w => w.id === id);
+  if (idx < 0) return;
+  items.splice(idx, 1);
+  tombstoneWindow(state.currentFloor, id);
+  if (state.selectedWindowId === id) state.selectedWindowId = null;
+  renderWindows();
+  renderFurniture();   // refresh panel (hide inspector)
+  scheduleSave();
+}
+
+// ---- measurement math (inches) ----
+const winNum = v => { if (v === '' || v == null) return null; const n = parseFloat(v); return isNaN(n) ? null : n; };
+const winFilled = arr => arr.map(winNum).filter(v => v != null);
+const roundEighthIn = x => Math.round(x * 8) / 8;
+function inchFrac(x) {
+  if (x == null || isNaN(x)) return '—';
+  const r = roundEighthIn(x); let whole = Math.floor(r);
+  let e = Math.round((r - whole) * 8);
+  const map = { 0: '', 1: '1/8', 2: '1/4', 3: '3/8', 4: '1/2', 5: '5/8', 6: '3/4', 7: '7/8' };
+  if (e === 8) { whole += 1; e = 0; }
+  const fr = map[e];
+  if (whole === 0 && fr === '') return '0"';
+  if (fr === '') return whole + '"';
+  if (whole === 0) return fr + '"';
+  return whole + ' ' + fr + '"';
+}
+// Inside mount: order narrowest width × tallest height (raw opening — factory deducts).
+// Outside mount: widest width + coverage × tallest height + coverage (finished size).
+function windowOrder(w) {
+  const ws = winFilled(w.w), hs = winFilled(w.h);
+  if (!ws.length || !hs.length) return null;
+  if (w.mount === 'inside') return { ow: roundEighthIn(Math.min(...ws)), oh: roundEighthIn(Math.max(...hs)) };
+  return { ow: roundEighthIn(Math.max(...ws) + (winNum(w.overlapW) || 0)), oh: roundEighthIn(Math.max(...hs) + (winNum(w.overlapH) || 0)) };
+}
+function windowStatus(w) {
+  const complete = winFilled(w.w).length > 0 && winFilled(w.h).length > 0;
+  const d = winFilled(w.diag);
+  const square = d.length < 2 ? null : Math.abs(d[0] - d[1]) <= 0.5;
+  return { complete, square };
+}
+
+function renderWindows() {
+  const f = getFloor(state.currentFloor);
+  const layer = document.getElementById('window-layer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  currentWindows().forEach((w, i) => {
+    const st = windowStatus(w);
+    const pin = document.createElement('div');
+    pin.className = 'win-pin ' + (st.complete ? 'ok' : 'pending')
+      + (st.square === false ? ' warn' : '')
+      + (w.id === state.selectedWindowId ? ' sel' : '');
+    pin.dataset.id = w.id;
+    pin.style.left = (f.offsetX + w.x * f.pxPerFt) + 'px';
+    pin.style.top  = (f.offsetY + w.y * f.pxPerFt) + 'px';
+    pin.textContent = i + 1;
+    pin.title = w.label;
+    layer.appendChild(pin);
+  });
+}
+
+function renderWindowInspector(container, force) {
+  const w = findWindow(state.selectedWindowId);
+  if (!w) { container.style.display = 'none'; container.dataset.wid = ''; return; }
+  container.style.display = '';
+  // Only rebuild the inputs when the selected window changes — preserves focus while typing.
+  if (!force && container.dataset.wid === String(w.id) && container.childElementCount) return;
+  container.dataset.wid = String(w.id);
+  const idx = currentWindows().indexOf(w) + 1;
+  const st = windowStatus(w), order = windowOrder(w), isOut = w.mount === 'outside';
+  const triW = ['top', 'mid', 'bot'], triH = ['left', 'ctr', 'right'];
+  container.innerHTML = `
+    <div class="wi-head">
+      <span class="wi-badge ${st.complete ? 'ok' : 'pending'}">${idx}</span>
+      <input class="wi-label" data-f="label" value="${winEscAttr(w.label)}" placeholder="Label / order code">
+      <button class="wi-del" data-act="remove" title="Remove window">✕</button>
+    </div>
+    <div class="wi-field">
+      <label>Opening type</label>
+      <select class="wi-in" data-f="type">${WINDOW_TYPES.map(t => `<option ${t === w.type ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    </div>
+    <div class="wi-field">
+      <label>Mount</label>
+      <div class="wi-seg" data-seg="mount">
+        <button data-v="inside" class="${!isOut ? 'on' : ''}">Inside</button>
+        <button data-v="outside" class="${isOut ? 'on' : ''}">Outside</button>
+      </div>
+    </div>
+    <div class="wi-field">
+      <label>Width — top / middle / bottom (in)</label>
+      <div class="wi-triple">${[0, 1, 2].map(i => `<div class="wi-num"><span>${triW[i]}</span><input type="number" step="0.125" inputmode="decimal" data-arr="w" data-i="${i}" value="${w.w[i] ?? ''}"></div>`).join('')}</div>
+    </div>
+    <div class="wi-field">
+      <label>Height — left / center / right (in)</label>
+      <div class="wi-triple">${[0, 1, 2].map(i => `<div class="wi-num"><span>${triH[i]}</span><input type="number" step="0.125" inputmode="decimal" data-arr="h" data-i="${i}" value="${w.h[i] ?? ''}"></div>`).join('')}</div>
+    </div>
+    <div class="wi-field">
+      <label>${isOut ? 'Coverage added — width / height (in)' : 'Recess depth + diagonals (in)'}</label>
+      ${isOut
+        ? `<div class="wi-pair"><div class="wi-num"><span>+W</span><input type="number" step="0.125" data-f="overlapW" value="${w.overlapW ?? ''}"></div><div class="wi-num"><span>+H</span><input type="number" step="0.125" data-f="overlapH" value="${w.overlapH ?? ''}"></div></div>`
+        : `<div class="wi-triple"><div class="wi-num"><span>depth</span><input type="number" step="0.125" data-f="depth" value="${w.depth ?? ''}"></div><div class="wi-num"><span>diag 1</span><input type="number" step="0.125" data-arr="diag" data-i="0" value="${w.diag[0] ?? ''}"></div><div class="wi-num"><span>diag 2</span><input type="number" step="0.125" data-arr="diag" data-i="1" value="${w.diag[1] ?? ''}"></div></div>`}
+    </div>
+    <div class="wi-readout ${w.mount}">
+      <div class="wi-order">${order ? `${inchFrac(order.ow)} <span>×</span> ${inchFrac(order.oh)}` : '<span class="wi-dim">Fill ≥1 width &amp; 1 height</span>'}</div>
+      ${order ? `<div class="wi-note">${isOut ? 'Outside mount — finished size, order as-is (coverage included).' : 'Inside mount — submit this raw opening; the factory deducts clearance. Do <b>not</b> pre-deduct.'}</div>` : ''}
+      <div class="wi-flag bad" ${st.square === false ? '' : 'hidden'}>⚠ Out of square — diagonals differ by ${st.square === false ? inchFrac(Math.abs(winFilled(w.diag)[0] - winFilled(w.diag)[1])) : ''}. Consider outside mount.</div>
+      <div class="wi-flag good" ${st.square === true ? '' : 'hidden'}>✓ Square within tolerance (≤ 1/2").</div>
+    </div>
+    <div class="wi-field">
+      <label>Notes</label>
+      <textarea class="wi-notes" data-f="notes" placeholder="e.g. crank handle on left; west-facing">${winEscHtml(w.notes || '')}</textarea>
+    </div>
+    <div class="wi-field"><button class="wi-btn" data-act="csv">⤓ Export all windows (CSV)</button></div>
+    <details class="wi-howto">
+      <summary>Measuring rules</summary>
+      <ul>
+        <li><b>Width</b> at top/middle/bottom → order the <b>narrowest</b>.</li>
+        <li><b>Height</b> at left/center/right → order the <b>tallest</b>.</li>
+        <li>Round to nearest <b>1/8"</b>; use a steel tape.</li>
+        <li><b>Inside mount:</b> give the raw opening — factory deducts. Never deduct yourself.</li>
+        <li><b>Outside mount:</b> no deduction — add your own coverage (≈3"/side).</li>
+        <li>Always <b>width × height</b>. Check depth fits the headrail.</li>
+      </ul>
+    </details>`;
+  wireWindowInspector(container, w);
+}
+
+function wireWindowInspector(container, w) {
+  container.querySelectorAll('[data-f]').forEach(el => {
+    const key = el.getAttribute('data-f');
+    el.addEventListener('input', () => {
+      if (['depth', 'overlapW', 'overlapH'].includes(key)) w[key] = winNum(el.value);
+      else w[key] = el.value;
+      touch(w);
+      if (key === 'label') renderWindows();
+      windowLiveRefresh(container, w);
+      scheduleSave();
+    });
+  });
+  container.querySelectorAll('[data-arr]').forEach(el => {
+    const arr = el.getAttribute('data-arr'), i = +el.getAttribute('data-i');
+    el.addEventListener('input', () => { w[arr][i] = winNum(el.value); touch(w); windowLiveRefresh(container, w); scheduleSave(); });
+  });
+  container.querySelectorAll('[data-seg="mount"] button').forEach(b => {
+    b.addEventListener('click', () => { w.mount = b.getAttribute('data-v'); touch(w); renderWindowInspector(container, true); scheduleSave(); });
+  });
+  const rm = container.querySelector('[data-act="remove"]');
+  if (rm) rm.addEventListener('click', () => { if (confirm(`Remove "${w.label}"?`)) deleteWindow(w.id); });
+  const csv = container.querySelector('[data-act="csv"]');
+  if (csv) csv.addEventListener('click', exportWindowsCsv);
+}
+
+// Update readout + pin without rebuilding inputs (keeps focus while typing).
+function windowLiveRefresh(container, w) {
+  const order = windowOrder(w), st = windowStatus(w);
+  const ro = container.querySelector('.wi-order');
+  if (ro) ro.innerHTML = order ? `${inchFrac(order.ow)} <span>×</span> ${inchFrac(order.oh)}` : '<span class="wi-dim">Fill ≥1 width &amp; 1 height</span>';
+  const readout = container.querySelector('.wi-readout');
+  if (readout) readout.className = 'wi-readout ' + w.mount;
+  const bad = container.querySelector('.wi-flag.bad'), good = container.querySelector('.wi-flag.good');
+  if (bad) {
+    if (st.square === false) { const d = winFilled(w.diag); bad.hidden = false; bad.innerHTML = `⚠ Out of square — diagonals differ by ${inchFrac(Math.abs(d[0] - d[1]))}. Consider outside mount.`; }
+    else bad.hidden = true;
+  }
+  if (good) good.hidden = st.square !== true;
+  const badge = container.querySelector('.wi-badge');
+  if (badge) badge.className = 'wi-badge ' + (st.complete ? 'ok' : 'pending');
+  const layer = document.getElementById('window-layer');
+  const pin = layer && layer.querySelectorAll('.win-pin')[currentWindows().indexOf(w)];
+  if (pin) pin.className = 'win-pin ' + (st.complete ? 'ok' : 'pending') + (st.square === false ? ' warn' : '') + ' sel';
+}
+
+function exportWindowsCsv() {
+  const rows = [['Floor', 'Label', 'Type', 'Mount', 'OrderW', 'OrderW_in', 'OrderH', 'OrderH_in', 'Depth_in', 'Square', 'Notes']];
+  for (const f of getAllFloors()) {
+    for (const w of (state.windows[f.id] || [])) {
+      const o = windowOrder(w), st = windowStatus(w);
+      rows.push([
+        f.name || f.id, w.label, w.type, w.mount,
+        o ? inchFrac(o.ow) : '', o ? o.ow : '',
+        o ? inchFrac(o.oh) : '', o ? o.oh : '',
+        w.depth ?? '', st.square == null ? '' : (st.square ? 'ok' : 'OUT'), w.notes || ''
+      ]);
+    }
+  }
+  if (rows.length === 1) { alert('No windows added yet. Turn on the 🪟 Windows tool and click the plan to drop a pin.'); return; }
+  const csv = rows.map(r => r.map(c => { c = String(c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'window-measurements.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Windows button toggles window-pin placement mode (mutually exclusive with measure/label).
+(function wireWindowButton() {
+  const btn = document.getElementById('window-add-btn');
+  const wrap = document.getElementById('canvas-wrapper');
+  function applyMode() {
+    btn.classList.toggle('active', state.windowMode);
+    wrap.classList.toggle('window-mode', state.windowMode);
+  }
+  btn.addEventListener('click', () => {
+    state.windowMode = !state.windowMode;
+    if (state.windowMode) {
+      if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); renderMeasurements(); }
+      if (state.labelMode) { state.labelMode = false; window.__applyLabelMode && window.__applyLabelMode(); }
+    }
+    applyMode();
+  });
+  window.__applyWindowMode = applyMode;
+})();
+
+// Window pin selection + drag.
+let winDrag = null;
+(function wireWindowLayer() {
+  const layer = document.getElementById('window-layer');
+  layer.addEventListener('pointerdown', (e) => {
+    if (state.windowMode) return; // placement handled by the canvas handler
+    const el = e.target.closest('.win-pin');
+    if (!el) return;
+    const w = findWindow(+el.dataset.id);
+    if (!w) return;
+    selectWindow(w.id);
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    winDrag = { id: w.id, dx: w.x - ft.x, dy: w.y - ft.y };
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    e.stopPropagation();
+    e.preventDefault();
+  });
+  layer.addEventListener('pointermove', (e) => {
+    if (!winDrag) return;
+    const w = findWindow(winDrag.id);
+    if (!w) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    w.x = snapToEighth(ft.x + winDrag.dx);
+    w.y = snapToEighth(ft.y + winDrag.dy);
+    touch(w);
+    renderWindows();
+  });
+  layer.addEventListener('pointerup', () => { if (winDrag) { winDrag = null; scheduleSave(); } });
+  layer.addEventListener('pointercancel', () => { if (winDrag) { winDrag = null; scheduleSave(); } });
 })();
 
 // ============================================================
@@ -2500,6 +2938,12 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
+  if (state.windowMode && e.key === 'Escape') {
+    state.windowMode = false;
+    if (window.__applyWindowMode) window.__applyWindowMode();
+    e.preventDefault();
+    return;
+  }
   // Selected room label: Delete removes, Esc deselects.
   if (state.selectedRoomLabelId != null && (e.key === 'Delete' || e.key === 'Backspace')) {
     deleteRoomLabel(state.selectedRoomLabelId);
@@ -2521,6 +2965,18 @@ window.addEventListener('keydown', (e) => {
   if (state.selectedMeasurementId != null && e.key === 'Escape') {
     state.selectedMeasurementId = null;
     renderMeasurements();
+    e.preventDefault();
+    return;
+  }
+  // Selected window: Delete removes, Esc deselects.
+  if (state.selectedWindowId != null && (e.key === 'Delete' || e.key === 'Backspace')) {
+    deleteWindow(state.selectedWindowId);
+    e.preventDefault();
+    return;
+  }
+  if (state.selectedWindowId != null && e.key === 'Escape') {
+    state.selectedWindowId = null;
+    renderWindows(); renderFurniture();
     e.preventDefault();
     return;
   }
