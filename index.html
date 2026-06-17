@@ -324,6 +324,35 @@
   .wi-howto summary { font-size: 11.5px; color: var(--ink-soft); cursor: pointer; }
   .wi-howto ul { margin: 8px 0 2px; padding-left: 18px; font-size: 11.5px; color: var(--ink-soft); line-height: 1.6; }
 
+  /* ---- Switches (gang pins + connector lines + inspector) ---- */
+  .canvas-wrapper.switch-mode { cursor: crosshair; }
+  .canvas-wrapper.switch-mode .furniture-layer { pointer-events: none; }
+  .switch-link-layer { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: visible; }
+  .switch-layer { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+  .sw-pin {
+    position: absolute; transform: translate(-50%, -50%);
+    min-width: 22px; height: 22px; padding: 0 5px; border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+    background: #6d28d9; border: 2px solid rgba(255,255,255,0.9);
+    box-shadow: var(--shadow); cursor: grab; pointer-events: auto;
+    font-family: inherit; user-select: none; touch-action: none; white-space: nowrap;
+  }
+  .sw-pin.sel { outline: 3px solid #a78bfa; outline-offset: 2px; z-index: 9; }
+  .sw-pin:active { cursor: grabbing; }
+  .si-link { stroke: #6d28d9; stroke-width: 2; stroke-dasharray: 5 4; fill: none; opacity: 0.75; }
+  .si-rows { display: flex; flex-direction: column; gap: 8px; }
+  .si-row { border: 1px solid var(--border); border-radius: 7px; padding: 8px; background: var(--paper-dim); }
+  .si-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+  .si-n { width: 20px; height: 20px; border-radius: 4px; background: #6d28d9; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .si-row-top input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); }
+  .si-row-rm { border: none; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+  .si-row-rm:hover { color: var(--danger); }
+  .si-pairsel { width: 100%; font: inherit; font-size: 12px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); margin-top: 6px; }
+  .si-add { width: 100%; font: inherit; font-size: 12.5px; padding: 7px; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--ink-soft); cursor: pointer; margin-top: 8px; }
+  .si-add:hover { border-color: #6d28d9; color: #6d28d9; }
+  .wi-badge.switch { background: #6d28d9; }
+
   /* "Show labels" toggle: hides item titles + edge dimension callouts + room labels. */
   body.no-labels .furniture .label,
   body.no-labels .furniture .dims,
@@ -719,6 +748,7 @@
     <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
     <button id="room-label-add-btn" title="Add room label (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🏷 Label</button>
     <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟 Windows</button>
+    <button id="switch-add-btn" title="Add light switch / gang (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">💡 Switches</button>
   </div>
 
   <div class="header-spacer"></div>
@@ -743,6 +773,8 @@
         <svg class="measure-layer" id="measure-layer" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="room-label-layer" id="room-label-layer"></div>
         <div class="window-layer" id="window-layer"></div>
+        <svg class="switch-link-layer" id="switch-link-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="switch-layer" id="switch-layer"></div>
       </div>
     </div>
   </div>
@@ -752,6 +784,7 @@
     <div id="properties-content">
       <h3>Properties</h3>
       <div id="window-inspector" style="display:none;"></div>
+      <div id="switch-inspector" style="display:none;"></div>
       <div class="empty" id="prop-empty">
         Click a furniture item to edit.<br><br>
         <kbd>R</kbd> rotate · <kbd>F</kbd> flip · <kbd>⌫</kbd> delete · <kbd>⌘D</kbd> duplicate · <kbd>↑↓←→</kbd> nudge
@@ -1141,6 +1174,11 @@ const state = {
   deletedWindows: { 1: {}, 2: {}, 3: {}, 4: {} },
   selectedWindowId: null,
   windowMode: false,
+  // Switches — per-floor light-switch locations (gangs), same lifecycle as windows.
+  switches: { 1: [], 2: [], 3: [], 4: [] },
+  deletedSwitches: { 1: {}, 2: {}, 3: {}, 4: {} },
+  selectedSwitchId: null,
+  switchMode: false,
 };
 
 // Globally-unique item IDs (random within Number.MAX_SAFE_INTEGER). Avoids
@@ -1167,6 +1205,10 @@ function tombstoneWindow(floor, id) {
   if (!state.deletedWindows[floor]) state.deletedWindows[floor] = {};
   state.deletedWindows[floor][id] = Date.now();
 }
+function tombstoneSwitch(floor, id) {
+  if (!state.deletedSwitches[floor]) state.deletedSwitches[floor] = {};
+  state.deletedSwitches[floor][id] = Date.now();
+}
 
 // ============================================================
 // STORAGE
@@ -1188,6 +1230,8 @@ async function save() {
       deletedRoomLabels: state.deletedRoomLabels,
       windows: state.windows,
       deletedWindows: state.deletedWindows,
+      switches: state.switches,
+      deletedSwitches: state.deletedSwitches,
       floors: state.floors,
       deletedFloors: state.deletedFloors,
       currentFloor: state.currentFloor,
@@ -1226,6 +1270,8 @@ function snapshotState() {
     dr: state.deletedRoomLabels,
     wn: state.windows,
     dwn: state.deletedWindows,
+    sw: state.switches,
+    dsw: state.deletedSwitches,
     fl: state.floors,
     dfl: state.deletedFloors,
   });
@@ -1250,12 +1296,15 @@ function undo() {
   state.deletedRoomLabels    = prev.dr;
   state.windows              = prev.wn || state.windows;
   state.deletedWindows       = prev.dwn || state.deletedWindows;
+  state.switches             = prev.sw || state.switches;
+  state.deletedSwitches      = prev.dsw || state.deletedSwitches;
   state.floors               = prev.fl;
   state.deletedFloors        = prev.dfl;
   state.selectedId = null;
   state.selectedMeasurementId = null;
   state.selectedRoomLabelId = null;
   state.selectedWindowId = null;
+  state.selectedSwitchId = null;
   skipNextHistory = true;                 // don't re-push on the save below
   renderFloor();
   scheduleSave();
@@ -1291,6 +1340,13 @@ async function load() {
       if (!state.windows[wf]) state.windows[wf] = [];
       if (!state.deletedWindows[wf]) state.deletedWindows[wf] = {};
       for (const w of state.windows[wf]) { if (w._ts == null) w._ts = 0; }
+    }
+    if (data.switches) state.switches = data.switches;
+    if (data.deletedSwitches) state.deletedSwitches = data.deletedSwitches;
+    for (const sf of ['1', '2', '3', '4']) {
+      if (!state.switches[sf]) state.switches[sf] = [];
+      if (!state.deletedSwitches[sf]) state.deletedSwitches[sf] = {};
+      for (const s of state.switches[sf]) { if (s._ts == null) s._ts = 0; if (!Array.isArray(s.switches)) s.switches = [{ control: '', type: 'normal', pairedLocId: null }]; }
     }
     if (data.floors) state.floors = data.floors;
     if (data.deletedFloors) state.deletedFloors = data.deletedFloors;
@@ -1353,6 +1409,8 @@ function getSyncPayload() {
     deletedRoomLabels: state.deletedRoomLabels,
     windows: state.windows,
     deletedWindows: state.deletedWindows,
+    switches: state.switches,
+    deletedSwitches: state.deletedSwitches,
     floors: state.floors,
     deletedFloors: state.deletedFloors,
   };
@@ -1486,6 +1544,36 @@ function mergeSyncData(remote) {
       }
       state.windows[f]        = survivors;
       state.deletedWindows[f] = mergedDel;
+    }
+  }
+  // Merge switches with the same LWW + tombstone strategy.
+  if (remote.switches) {
+    for (const f of Object.keys(remote.switches)) {
+      const localItems  = state.switches[f]  || [];
+      const remoteItems = remote.switches[f] || [];
+      const localDel    = state.deletedSwitches[f]                  || {};
+      const remoteDel   = (remote.deletedSwitches && remote.deletedSwitches[f]) || {};
+      const mergedDel = { ...localDel };
+      for (const id of Object.keys(remoteDel)) {
+        if (!mergedDel[id] || remoteDel[id] > mergedDel[id]) { mergedDel[id] = remoteDel[id]; changed = true; }
+      }
+      const byId = {};
+      for (const s of localItems)  byId[s.id] = s;
+      for (const s of remoteItems) {
+        const ex = byId[s.id];
+        const rTs = s._ts || 0;
+        if (!ex) { byId[s.id] = s; changed = true; }
+        else if (rTs > (ex._ts || 0)) { byId[s.id] = s; changed = true; }
+      }
+      const survivors = [];
+      for (const id of Object.keys(byId)) {
+        const s = byId[id];
+        const tomb = mergedDel[id];
+        if (tomb && tomb >= (s._ts || 0)) { changed = true; continue; }
+        survivors.push(s);
+      }
+      state.switches[f]        = survivors;
+      state.deletedSwitches[f] = mergedDel;
     }
   }
   // Merge floors: per-floor LWW on the override record, plus tombstones.
@@ -1700,6 +1788,7 @@ function renderFloor() {
   renderMeasurements();
   renderRoomLabels();
   renderWindows();
+  renderSwitches();
 }
 
 // ============================================================
@@ -1960,12 +2049,21 @@ function renderProperties() {
   const it = findItem(state.selectedId);
   const empty = document.getElementById('prop-empty');
   const form  = document.getElementById('prop-form');
-  // Window selection owns the panel — but yields if furniture/measurement/label is selected.
+  // Window/switch selection owns the panel — but yields if furniture/measurement/label is selected.
   const winInsp = document.getElementById('window-inspector');
-  if (state.selectedWindowId != null && (state.selectedId != null || state.selectedMeasurementId != null || state.selectedRoomLabelId != null)) {
-    state.selectedWindowId = null;
-    renderWindows();
+  const swInsp  = document.getElementById('switch-inspector');
+  if ((state.selectedWindowId != null || state.selectedSwitchId != null) && (state.selectedId != null || state.selectedMeasurementId != null || state.selectedRoomLabelId != null)) {
+    if (state.selectedWindowId != null) { state.selectedWindowId = null; renderWindows(); }
+    if (state.selectedSwitchId != null) { state.selectedSwitchId = null; renderSwitches(); }
   }
+  if (state.selectedSwitchId != null) {
+    if (empty) empty.style.display = 'none';
+    if (form)  form.style.display  = 'none';
+    if (winInsp) winInsp.style.display = 'none';
+    if (swInsp) { swInsp.style.display = ''; renderSwitchInspector(swInsp); }
+    return;
+  }
+  if (swInsp) swInsp.style.display = 'none';
   if (state.selectedWindowId != null) {
     if (empty) empty.style.display = 'none';
     if (form)  form.style.display  = 'none';
@@ -2283,6 +2381,19 @@ els.canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     return;
   }
+  // In switch mode, canvas clicks drop a switch-location pin.
+  if (state.switchMode) {
+    if (e.target.closest('.sw-pin')) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    if (!state.switches[state.currentFloor]) state.switches[state.currentFloor] = [];
+    const sw = newSwitch(snapToEighth(ft.x), snapToEighth(ft.y));
+    state.switches[state.currentFloor].push(sw);
+    selectSwitch(sw.id);
+    scheduleSave();
+    e.preventDefault();
+    return;
+  }
   // In label mode, canvas clicks place a new room label.
   if (state.labelMode) {
     if (e.target.closest('.room-label')) return; // existing label handles its own click
@@ -2338,6 +2449,7 @@ els.canvas.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('.furniture')) {
     state.selectedId = null;
     if (state.selectedWindowId != null) { state.selectedWindowId = null; renderWindows(); }
+    if (state.selectedSwitchId != null) { state.selectedSwitchId = null; renderSwitches(); }
     renderFurniture();
   }
 });
@@ -2420,6 +2532,10 @@ let mDrag = null;
       state.windowMode = false;
       window.__applyWindowMode && window.__applyWindowMode();
     }
+    if (state.measureMode && state.switchMode) {
+      state.switchMode = false;
+      window.__applySwitchMode && window.__applySwitchMode();
+    }
     applyMode();
     renderMeasurements();
   });
@@ -2446,6 +2562,10 @@ let mDrag = null;
     if (state.labelMode && state.windowMode) {
       state.windowMode = false;
       window.__applyWindowMode && window.__applyWindowMode();
+    }
+    if (state.labelMode && state.switchMode) {
+      state.switchMode = false;
+      window.__applySwitchMode && window.__applySwitchMode();
     }
     applyMode();
   });
@@ -2535,6 +2655,7 @@ function newWindow(x, y) {
 
 function selectWindow(id) {
   state.selectedWindowId = id;
+  state.selectedSwitchId = null;
   state.selectedId = null;
   state.selectedMeasurementId = null;
   state.selectedRoomLabelId = null;
@@ -2542,6 +2663,7 @@ function selectWindow(id) {
   renderMeasurements();
   renderRoomLabels();
   renderWindows();
+  renderSwitches();
 }
 
 function deleteWindow(id) {
@@ -2754,6 +2876,7 @@ function exportWindowsCsv() {
     if (state.windowMode) {
       if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); renderMeasurements(); }
       if (state.labelMode) { state.labelMode = false; window.__applyLabelMode && window.__applyLabelMode(); }
+      if (state.switchMode) { state.switchMode = false; window.__applySwitchMode && window.__applySwitchMode(); }
     }
     applyMode();
   });
@@ -2791,6 +2914,259 @@ let winDrag = null;
   });
   layer.addEventListener('pointerup', () => { if (winDrag) { winDrag = null; scheduleSave(); } });
   layer.addEventListener('pointercancel', () => { if (winDrag) { winDrag = null; scheduleSave(); } });
+})();
+
+// ============================================================
+// SWITCHES (light-switch locations / gangs)
+// ============================================================
+// A per-floor layer of switch-location pins. Each location holds a gang of
+// 1..N switches; each switch is normal/dimmer and may be paired (3-way/4-way)
+// with another location. Same lifecycle as windows: save/load/undo/sync.
+const SWITCH_TYPES = ['normal', 'dimmer'];
+
+function currentSwitches() { return state.switches[state.currentFloor] || []; }
+function findSwitch(id) { return currentSwitches().find(s => s.id === id); }
+function allSwitchLocations() {
+  const out = [];
+  for (const f of getAllFloors()) for (const s of (state.switches[f.id] || [])) out.push({ id: s.id, label: s.label, floor: f.name || f.id });
+  return out;
+}
+function switchLocName(id) {
+  for (const f of getAllFloors()) for (const s of (state.switches[f.id] || [])) if (String(s.id) === String(id)) return s.label;
+  return null;
+}
+
+function newSwitch(x, y) {
+  const f = getFloor(state.currentFloor);
+  const n = currentSwitches().length + 1;
+  const base = (f.name || ('Floor ' + state.currentFloor)).replace(/\s+/g, '');
+  return {
+    id: genId(), x, y,
+    label: base + '-S' + n,
+    switches: [{ control: '', type: 'normal', pairedLocId: null }],
+    _ts: Date.now(),
+  };
+}
+
+function selectSwitch(id) {
+  state.selectedSwitchId = id;
+  state.selectedWindowId = null;
+  state.selectedId = null;
+  state.selectedMeasurementId = null;
+  state.selectedRoomLabelId = null;
+  renderFurniture();   // re-renders right panel (shows switch inspector via renderProperties)
+  renderMeasurements();
+  renderRoomLabels();
+  renderWindows();
+  renderSwitches();
+}
+
+function deleteSwitch(id) {
+  const items = state.switches[state.currentFloor];
+  if (!items) return;
+  const idx = items.findIndex(s => s.id === id);
+  if (idx < 0) return;
+  items.splice(idx, 1);
+  tombstoneSwitch(state.currentFloor, id);
+  if (state.selectedSwitchId === id) state.selectedSwitchId = null;
+  renderSwitches();
+  renderFurniture();
+  scheduleSave();
+}
+
+function renderSwitches() {
+  const f = getFloor(state.currentFloor);
+  const layer = document.getElementById('switch-layer');
+  const svg = document.getElementById('switch-link-layer');
+  if (!layer || !svg) return;
+  const list = currentSwitches();
+  // Connector lines between paired locations (same floor only — cross-floor pairs still record in data/CSV).
+  svg.setAttribute('width', f.w); svg.setAttribute('height', f.h); svg.setAttribute('viewBox', `0 0 ${f.w} ${f.h}`);
+  const byId = {}; list.forEach(s => byId[s.id] = s);
+  let lines = '';
+  list.forEach(s => {
+    const x1 = f.offsetX + s.x * f.pxPerFt, y1 = f.offsetY + s.y * f.pxPerFt;
+    const seen = {};
+    s.switches.forEach(sw => {
+      if (sw.pairedLocId != null && byId[sw.pairedLocId] && !seen[sw.pairedLocId]) {
+        seen[sw.pairedLocId] = 1;
+        const t = byId[sw.pairedLocId];
+        const x2 = f.offsetX + t.x * f.pxPerFt, y2 = f.offsetY + t.y * f.pxPerFt;
+        lines += `<line class="si-link" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
+      }
+    });
+  });
+  svg.innerHTML = lines;
+  // Pins (show gang size).
+  layer.innerHTML = '';
+  list.forEach(s => {
+    const pin = document.createElement('div');
+    pin.className = 'sw-pin' + (s.id === state.selectedSwitchId ? ' sel' : '');
+    pin.dataset.id = s.id;
+    pin.style.left = (f.offsetX + s.x * f.pxPerFt) + 'px';
+    pin.style.top  = (f.offsetY + s.y * f.pxPerFt) + 'px';
+    pin.textContent = s.switches.length;
+    pin.title = s.label + ' · ' + s.switches.length + '-gang';
+    layer.appendChild(pin);
+  });
+}
+
+function renderSwitchInspector(container, force) {
+  const loc = findSwitch(state.selectedSwitchId);
+  if (!loc) { container.style.display = 'none'; container.dataset.sid = ''; return; }
+  container.style.display = '';
+  if (!force && container.dataset.sid === String(loc.id) && container.childElementCount) return;
+  container.dataset.sid = String(loc.id);
+  const idx = currentSwitches().indexOf(loc) + 1;
+  const others = allSwitchLocations().filter(o => String(o.id) !== String(loc.id));
+  const rows = loc.switches.map((sw, i) => `
+    <div class="si-row">
+      <div class="si-row-top">
+        <span class="si-n">${i + 1}</span>
+        <input data-sf="control" data-i="${i}" value="${winEscAttr(sw.control)}" placeholder="what it controls (e.g. ceiling)">
+        <button class="si-row-rm" data-rm="${i}" title="Remove this switch">✕</button>
+      </div>
+      <div class="wi-seg" data-segsw="${i}">
+        <button data-v="normal" class="${sw.type !== 'dimmer' ? 'on' : ''}">Normal</button>
+        <button data-v="dimmer" class="${sw.type === 'dimmer' ? 'on' : ''}">Dimmer</button>
+      </div>
+      <select class="si-pairsel" data-pair="${i}">
+        <option value="">— not paired (single-location) —</option>
+        ${others.map(o => `<option value="${o.id}" ${String(sw.pairedLocId) === String(o.id) ? 'selected' : ''}>↔ paired with ${winEscHtml(o.label)} (${winEscHtml(String(o.floor))})</option>`).join('')}
+      </select>
+    </div>`).join('');
+  container.innerHTML = `
+    <div class="wi-head">
+      <span class="wi-badge switch">${idx}</span>
+      <input class="wi-label" data-sf="label" value="${winEscAttr(loc.label)}" placeholder="Location (e.g. Kitchen entry)">
+      <button class="wi-del" data-act="remove" title="Remove location">✕</button>
+    </div>
+    <div class="wi-field">
+      <label>${loc.switches.length}-gang — switches at this location</label>
+      <div class="si-rows">${rows}</div>
+      <button class="si-add" data-act="add">+ Add a switch to this gang</button>
+    </div>
+    <div class="wi-field"><button class="wi-btn" data-act="csv">⤓ Export switch schedule (CSV)</button></div>
+    <details class="wi-howto">
+      <summary>Notes</summary>
+      <ul>
+        <li>One pin = one box/location. Add a row per switch in the gang.</li>
+        <li><b>Dimmer / Normal</b> per switch.</li>
+        <li><b>Paired</b> = 3-way/4-way: the same light controlled from another location. A dashed line links the two pins.</li>
+        <li>Pair from either end — pick the other location in the dropdown.</li>
+      </ul>
+    </details>`;
+  wireSwitchInspector(container, loc);
+}
+
+function wireSwitchInspector(container, loc) {
+  // location label
+  const labelEl = container.querySelector('[data-sf="label"]');
+  if (labelEl) labelEl.addEventListener('input', () => { loc.label = labelEl.value; touch(loc); renderSwitches(); scheduleSave(); });
+  // per-switch control text (no rebuild — keep focus)
+  container.querySelectorAll('[data-sf="control"]').forEach(el => {
+    el.addEventListener('input', () => { loc.switches[+el.dataset.i].control = el.value; touch(loc); scheduleSave(); });
+  });
+  // normal/dimmer toggle
+  container.querySelectorAll('[data-segsw] button').forEach(b => {
+    b.addEventListener('click', () => {
+      const i = +b.parentElement.getAttribute('data-segsw');
+      loc.switches[i].type = b.getAttribute('data-v');
+      touch(loc); renderSwitchInspector(container, true); scheduleSave();
+    });
+  });
+  // paired-with dropdown
+  container.querySelectorAll('[data-pair]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      loc.switches[+sel.dataset.pair].pairedLocId = sel.value ? (isNaN(+sel.value) ? sel.value : +sel.value) : null;
+      touch(loc); renderSwitches(); scheduleSave();
+    });
+  });
+  // remove a switch from the gang (last one removes the whole location)
+  container.querySelectorAll('[data-rm]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.getAttribute('data-rm');
+      if (loc.switches.length <= 1) { if (confirm(`Remove location "${loc.label}"?`)) deleteSwitch(loc.id); return; }
+      loc.switches.splice(i, 1); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave();
+    });
+  });
+  const add = container.querySelector('[data-act="add"]');
+  if (add) add.addEventListener('click', () => { loc.switches.push({ control: '', type: 'normal', pairedLocId: null }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
+  const rm = container.querySelector('[data-act="remove"]');
+  if (rm) rm.addEventListener('click', () => { if (confirm(`Remove location "${loc.label}" and its ${loc.switches.length} switch(es)?`)) deleteSwitch(loc.id); });
+  const csv = container.querySelector('[data-act="csv"]');
+  if (csv) csv.addEventListener('click', exportSwitchesCsv);
+}
+
+function exportSwitchesCsv() {
+  const rows = [['Floor', 'Location', 'Gang', 'Switch#', 'Controls', 'Type', 'PairedWith']];
+  for (const f of getAllFloors()) {
+    for (const s of (state.switches[f.id] || [])) {
+      s.switches.forEach((sw, i) => {
+        rows.push([f.name || f.id, s.label, s.switches.length, i + 1, sw.control || '', sw.type, sw.pairedLocId != null ? (switchLocName(sw.pairedLocId) || '(missing)') : '']);
+      });
+    }
+  }
+  if (rows.length === 1) { alert('No switches added yet. Turn on the 💡 Switches tool and click the plan to drop one.'); return; }
+  const csv = rows.map(r => r.map(c => { c = String(c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'switch-schedule.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Switches button toggles placement mode (mutually exclusive with measure/label/window).
+(function wireSwitchButton() {
+  const btn = document.getElementById('switch-add-btn');
+  const wrap = document.getElementById('canvas-wrapper');
+  function applyMode() {
+    btn.classList.toggle('active', state.switchMode);
+    wrap.classList.toggle('switch-mode', state.switchMode);
+  }
+  btn.addEventListener('click', () => {
+    state.switchMode = !state.switchMode;
+    if (state.switchMode) {
+      if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); renderMeasurements(); }
+      if (state.labelMode) { state.labelMode = false; window.__applyLabelMode && window.__applyLabelMode(); }
+      if (state.windowMode) { state.windowMode = false; window.__applyWindowMode && window.__applyWindowMode(); }
+    }
+    applyMode();
+  });
+  window.__applySwitchMode = applyMode;
+})();
+
+// Switch pin selection + drag.
+let swDrag = null;
+(function wireSwitchLayer() {
+  const layer = document.getElementById('switch-layer');
+  layer.addEventListener('pointerdown', (e) => {
+    if (state.switchMode) return; // placement handled by the canvas handler
+    const el = e.target.closest('.sw-pin');
+    if (!el) return;
+    const s = findSwitch(+el.dataset.id);
+    if (!s) return;
+    selectSwitch(s.id);
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    swDrag = { id: s.id, dx: s.x - ft.x, dy: s.y - ft.y };
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    e.stopPropagation();
+    e.preventDefault();
+  });
+  layer.addEventListener('pointermove', (e) => {
+    if (!swDrag) return;
+    const s = findSwitch(swDrag.id);
+    if (!s) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const ft = getMouseFt(e, rect);
+    s.x = snapToEighth(ft.x + swDrag.dx);
+    s.y = snapToEighth(ft.y + swDrag.dy);
+    touch(s);
+    renderSwitches();
+  });
+  layer.addEventListener('pointerup', () => { if (swDrag) { swDrag = null; scheduleSave(); } });
+  layer.addEventListener('pointercancel', () => { if (swDrag) { swDrag = null; scheduleSave(); } });
 })();
 
 // ============================================================
@@ -2944,6 +3320,12 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
+  if (state.switchMode && e.key === 'Escape') {
+    state.switchMode = false;
+    if (window.__applySwitchMode) window.__applySwitchMode();
+    e.preventDefault();
+    return;
+  }
   // Selected room label: Delete removes, Esc deselects.
   if (state.selectedRoomLabelId != null && (e.key === 'Delete' || e.key === 'Backspace')) {
     deleteRoomLabel(state.selectedRoomLabelId);
@@ -2977,6 +3359,18 @@ window.addEventListener('keydown', (e) => {
   if (state.selectedWindowId != null && e.key === 'Escape') {
     state.selectedWindowId = null;
     renderWindows(); renderFurniture();
+    e.preventDefault();
+    return;
+  }
+  // Selected switch location: Delete removes, Esc deselects.
+  if (state.selectedSwitchId != null && (e.key === 'Delete' || e.key === 'Backspace')) {
+    deleteSwitch(state.selectedSwitchId);
+    e.preventDefault();
+    return;
+  }
+  if (state.selectedSwitchId != null && e.key === 'Escape') {
+    state.selectedSwitchId = null;
+    renderSwitches(); renderFurniture();
     e.preventDefault();
     return;
   }
