@@ -434,6 +434,18 @@
     color: white;
     border-color: var(--accent);
   }
+  /* These buttons carry an inline background:transparent, so the active state
+     needs !important to override it. Color-coded to match their pins. */
+  #window-add-btn.active {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+    color: #fff !important;
+  }
+  #switch-add-btn.active {
+    background: #6d28d9 !important;
+    border-color: #6d28d9 !important;
+    color: #fff !important;
+  }
   /* Small dimension callout used on shape edges (L-shape arm dims). */
   .dim-callout {
     position: absolute;
