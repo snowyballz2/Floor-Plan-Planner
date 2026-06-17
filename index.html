@@ -2570,6 +2570,13 @@ function openPanelOnMobile() {
     applyPropsCollapsed();
   }
 }
+// On phones, collapse the (overlay) properties panel when nothing is selected.
+function closePanelOnMobile() {
+  if (window.matchMedia('(max-width: 768px)').matches && !state.panelMinimized) {
+    state.panelMinimized = true;
+    applyPropsCollapsed();
+  }
+}
 // Zoom around a screen point, keeping that point under the fingers.
 function setZoomAround(newZoom, sx, sy) {
   const wrap = document.getElementById('canvas-wrapper');
@@ -2626,6 +2633,7 @@ let pinchStart = null;
       state.selectedWindowId = null;
       state.selectedSwitchId = null;
       state.selectedId = null;
+      closePanelOnMobile();
       renderWindows(); renderSwitches(); renderFurniture();
       return;
     }
