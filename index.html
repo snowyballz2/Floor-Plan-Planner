@@ -796,6 +796,34 @@
     font-size: 10px;
     color: var(--ink-soft);
   }
+
+  /* ============================================================
+     MOBILE / TOUCH
+     ============================================================ */
+  /* Native one-finger pan; two-finger pinch handled in JS. Draggable elements
+     opt out so dragging them doesn't scroll the wrapper. */
+  .canvas-wrapper { touch-action: pan-x pan-y; }
+  .furniture, .room-label, .m-handle, .win-pin, .sw-pin { touch-action: none; }
+  @media (max-width: 768px) {
+    header { padding: 5px 8px; gap: 6px; }
+    .floor-tabs, .view-tabs { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+    .floor-tabs::-webkit-scrollbar, .view-tabs::-webkit-scrollbar { display: none; }
+    .floor-tabs button { padding: 5px 11px; font-size: 12px; white-space: nowrap; }
+    .view-tabs button { padding: 5px 10px; font-size: 12px; white-space: nowrap; }
+    .controls { gap: 5px; flex-wrap: wrap; }
+    .controls button { padding: 5px 8px; font-size: 12px; }
+    /* On phones, pinch-to-zoom replaces the −/%/+ buttons (keep ⊟ fit); hide niche tools + sync chip. */
+    .controls label.toggle, #measure-toggle, #room-label-add-btn, #sync-open-btn, #zoom-out, #zoom-in, #zoom-level { display: none; }
+    .header-spacer { display: none; }
+    #sync-btn-status { display: none; }
+    /* Side panels overlay the canvas so the plan always gets full width. */
+    main { position: relative; }
+    .sidebar, .properties { position: absolute; top: 0; bottom: 0; z-index: 30; box-shadow: var(--shadow-lg); }
+    .sidebar { left: 0; }
+    .properties { right: 0; }
+    .canvas-wrapper { padding: 8px; }
+    .status { padding: 3px 10px; font-size: 10px; gap: 10px; }
+  }
 </style>
 </head>
 <body>
@@ -2477,32 +2505,8 @@ function axisLockTo(pt, from) {
 }
 
 els.canvas.addEventListener('pointerdown', (e) => {
-  // In window mode, canvas clicks drop a window-measurement pin.
-  if (state.windowMode) {
-    if (e.target.closest('.win-pin')) return;
-    const rect = els.canvas.getBoundingClientRect();
-    const ft = getMouseFt(e, rect);
-    if (!state.windows[state.currentFloor]) state.windows[state.currentFloor] = [];
-    const w = newWindow(snapToEighth(ft.x), snapToEighth(ft.y));
-    state.windows[state.currentFloor].push(w);
-    selectWindow(w.id);
-    scheduleSave();
-    e.preventDefault();
-    return;
-  }
-  // In switch mode, canvas clicks drop a switch-location pin.
-  if (state.switchMode) {
-    if (e.target.closest('.sw-pin')) return;
-    const rect = els.canvas.getBoundingClientRect();
-    const ft = getMouseFt(e, rect);
-    if (!state.switches[state.currentFloor]) state.switches[state.currentFloor] = [];
-    const sw = newSwitch(snapToEighth(ft.x), snapToEighth(ft.y));
-    state.switches[state.currentFloor].push(sw);
-    selectSwitch(sw.id);
-    scheduleSave();
-    e.preventDefault();
-    return;
-  }
+  // Window/switch pin placement + plain deselect happen as TAPS (pointerup with no
+  // drag), handled by wireTouchCanvas() below — so panning/pinching never drops a pin.
   // In label mode, canvas clicks place a new room label.
   if (state.labelMode) {
     if (e.target.closest('.room-label')) return; // existing label handles its own click
@@ -2555,13 +2559,87 @@ els.canvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     return;
   }
-  if (!e.target.closest('.furniture')) {
-    state.selectedId = null;
-    if (state.selectedWindowId != null) { state.selectedWindowId = null; renderWindows(); }
-    if (state.selectedSwitchId != null) { state.selectedSwitchId = null; renderSwitches(); }
-    renderFurniture();
-  }
 });
+
+// ============================================================
+// TOUCH / MOBILE — pinch-to-zoom + tap-to-place
+// ============================================================
+function openPanelOnMobile() {
+  if (window.matchMedia('(max-width: 768px)').matches && state.panelMinimized) {
+    state.panelMinimized = false;
+    applyPropsCollapsed();
+  }
+}
+// Zoom around a screen point, keeping that point under the fingers.
+function setZoomAround(newZoom, sx, sy) {
+  const wrap = document.getElementById('canvas-wrapper');
+  const rect = wrap.getBoundingClientRect();
+  const lx = sx - rect.left, ly = sy - rect.top;
+  const cx = wrap.scrollLeft + lx, cy = wrap.scrollTop + ly;
+  const ratio = newZoom / state.zoom;
+  state.zoom = newZoom;
+  renderFloor();
+  wrap.scrollLeft = cx * ratio - lx;
+  wrap.scrollTop = cy * ratio - ly;
+  scheduleSave();
+}
+const activePointers = new Map();
+let pinchStart = null;
+(function wireTouchCanvas() {
+  const wrap = document.getElementById('canvas-wrapper');
+  let tap = null;
+  wrap.addEventListener('pointerdown', (e) => {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.size === 2) {
+      const p = [...activePointers.values()];
+      pinchStart = { dist: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, zoom: state.zoom };
+      tap = null;
+      return;
+    }
+    // A tap candidate for placement/deselect — not on a draggable element, not while measuring/labelling.
+    if (state.measureMode || state.labelMode) { tap = null; return; }
+    if (e.target.closest('.furniture, .win-pin, .sw-pin, .room-label, .m-handle')) { tap = null; return; }
+    tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false };
+  });
+  wrap.addEventListener('pointermove', (e) => {
+    if (!activePointers.has(e.pointerId)) return;
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tap && e.pointerId === tap.id && (Math.abs(e.clientX - tap.x) + Math.abs(e.clientY - tap.y) > 12)) tap.moved = true;
+    if (activePointers.size >= 2 && pinchStart) {
+      const p = [...activePointers.values()];
+      const dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      if (dist > 0) setZoomAround(Math.max(0.12, Math.min(3, pinchStart.zoom * (dist / pinchStart.dist))), (p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2);
+      e.preventDefault();
+    }
+  });
+  function end(e) {
+    const t = tap;
+    const wasTap = t && e.type === 'pointerup' && e.pointerId === t.id && !t.moved && (Date.now() - t.t) < 600 && activePointers.size <= 1;
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) pinchStart = null;
+    if (!wasTap) { if (t && e.pointerId === t.id) tap = null; return; }
+    tap = null;
+    const rect = els.canvas.getBoundingClientRect();
+    if (t.x < rect.left || t.x > rect.right || t.y < rect.top || t.y > rect.bottom) return; // tapped off the plan
+    const ft = getMouseFt({ clientX: t.x, clientY: t.y }, rect);
+    if (state.windowMode) {
+      if (!state.windows[state.currentFloor]) state.windows[state.currentFloor] = [];
+      const w = newWindow(snapToEighth(ft.x), snapToEighth(ft.y));
+      state.windows[state.currentFloor].push(w); selectWindow(w.id); scheduleSave();
+    } else if (state.switchMode) {
+      if (!state.switches[state.currentFloor]) state.switches[state.currentFloor] = [];
+      const sw = newSwitch(snapToEighth(ft.x), snapToEighth(ft.y));
+      state.switches[state.currentFloor].push(sw); selectSwitch(sw.id); scheduleSave();
+    } else {
+      state.selectedId = null;
+      if (state.selectedWindowId != null) { state.selectedWindowId = null; renderWindows(); }
+      if (state.selectedSwitchId != null) { state.selectedSwitchId = null; renderSwitches(); }
+      renderFurniture();
+    }
+  }
+  wrap.addEventListener('pointerup', end);
+  wrap.addEventListener('pointercancel', end);
+})();
 
 // Track cursor for the preview line. Shift locks the preview to H/V axis.
 els.canvas.addEventListener('pointermove', (e) => {
@@ -2765,6 +2843,7 @@ function newWindow(x, y) {
 function selectWindow(id) {
   state.selectedWindowId = id;
   state.selectedSwitchId = null;
+  openPanelOnMobile();
   state.selectedId = null;
   state.selectedMeasurementId = null;
   state.selectedRoomLabelId = null;
@@ -3060,6 +3139,7 @@ function newSwitch(x, y) {
 function selectSwitch(id) {
   state.selectedSwitchId = id;
   state.selectedWindowId = null;
+  openPanelOnMobile();
   state.selectedId = null;
   state.selectedMeasurementId = null;
   state.selectedRoomLabelId = null;
@@ -3997,6 +4077,8 @@ document.getElementById('sync-clear').addEventListener('click', () => {
   await load();
   pushHistory();   // initial snapshot — undo can revert the first mutation back to load state
   renderSidebar();
+  // On phones, start with both side panels collapsed so the plan gets full width.
+  if (window.matchMedia('(max-width: 768px)').matches) { state.sidebarCollapsed = true; state.panelMinimized = true; }
   applySidebarCollapsed();
   applyPropsCollapsed();
   applyLabelsVisible();
