@@ -14,6 +14,6 @@
     <path d="M262 250 H336"/>
     <path d="M336 250 A74 74 0 0 1 262 324"/>
   </g>
-  <rect x="156" y="289" width="56" height="30" rx="15" fill="#f59e0b"/>
-  <circle cx="197" cy="304" r="11" fill="#fffaf0"/>
+  <rect x="162" y="188" width="56" height="30" rx="15" fill="#f59e0b"/>
+  <circle cx="203" cy="203" r="11" fill="#fffaf0"/>
 </svg>
