@@ -385,6 +385,35 @@
   .sum-locate:hover { border-color: var(--accent); }
   .sum-empty { padding: 24px; text-align: center; color: var(--ink-faint); font-size: 13px; }
 
+  /* ---- View tabs (Furniture / Windows / Switches) ---- */
+  .view-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .view-tabs button { background: var(--paper); border: none; border-right: 1px solid var(--border); color: var(--ink-soft); padding: 6px 13px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .view-tabs button:last-child { border-right: none; }
+  .view-tabs button:hover { background: var(--paper-dim); color: var(--ink); }
+  .view-tabs button.active { background: var(--accent); color: #fff; }
+  .view-tabs button[data-view="furniture"].active { background: var(--ink); }
+  .view-tabs button[data-view="switches"].active { background: #6d28d9; }
+  /* The old per-layer toggle buttons are replaced by the view tabs. */
+  #window-add-btn, #switch-add-btn { display: none !important; }
+  /* Furniture-only tools hide outside Furniture view. */
+  body:not(.view-furniture) #add-custom-btn,
+  body:not(.view-furniture) #measure-toggle,
+  body:not(.view-furniture) #room-label-add-btn { display: none; }
+  body:not(.view-furniture) #prop-empty { display: none !important; }
+  /* Sidebar: palette in Furniture view, a hint in the others. */
+  .view-hint { display: none; font-size: 12px; color: var(--ink-soft); line-height: 1.55; padding: 4px 2px; }
+  .view-hint b { color: var(--ink); font-weight: 600; display: block; margin-bottom: 5px; font-size: 13px; }
+  body.view-windows #sidebar-content, body.view-switches #sidebar-content { display: none; }
+  body.view-windows #view-hint-windows { display: block; }
+  body.view-switches #view-hint-switches { display: block; }
+  .sidebar.collapsed .view-hint { display: none !important; }
+  /* Layer focus: dim + lock the non-active layers so the active one stands out. */
+  body.view-furniture .win-pin, body.view-furniture .sw-pin { pointer-events: none; }
+  body.view-windows .sw-pin, body.view-switches .win-pin { pointer-events: none; }
+  body.view-furniture .window-layer, body.view-furniture .switch-layer, body.view-furniture .switch-link-layer { opacity: 0.4; }
+  body.view-windows .furniture-layer, body.view-windows .switch-layer, body.view-windows .switch-link-layer { opacity: 0.4; }
+  body.view-switches .furniture-layer, body.view-switches .window-layer { opacity: 0.4; }
+
   /* "Show labels" toggle: hides item titles + edge dimension callouts + room labels. */
   body.no-labels .furniture .label,
   body.no-labels .furniture .dims,
@@ -774,6 +803,12 @@
 <header>
   <div class="floor-tabs" id="floor-tabs"></div>
 
+  <div class="view-tabs" id="view-tabs">
+    <button data-view="furniture" class="active">🛋 Furniture</button>
+    <button data-view="windows">🪟 Windows</button>
+    <button data-view="switches">💡 Switches</button>
+  </div>
+
   <div class="controls">
     <button class="primary" id="add-custom-btn">+ Add Custom</button>
     <div class="zoom-controls">
@@ -808,6 +843,8 @@
   <aside class="sidebar" id="sidebar">
     <button type="button" class="sidebar-toggle" id="sidebar-toggle" title="Collapse">‹</button>
     <div id="sidebar-content"></div>
+    <div id="view-hint-windows" class="view-hint"><b>🪟 Windows view</b>Click the plan to drop a window pin, then enter its 3 widths + 3 heights on the right. Click a pin to edit, drag to move. Open 📋 Summary for the full list.</div>
+    <div id="view-hint-switches" class="view-hint"><b>💡 Switches view</b>Click the plan to add a switch location, then build its gang on the right — add switches, set Dimmer/Normal, and pair 3-ways to another location.</div>
   </aside>
 
   <div class="canvas-wrapper" id="canvas-wrapper">
@@ -1247,6 +1284,8 @@ const state = {
   deletedSwitches: { 1: {}, 2: {}, 3: {}, 4: {} },
   selectedSwitchId: null,
   switchMode: false,
+  // Active top-level view/layer: 'furniture' | 'windows' | 'switches'.
+  view: 'furniture',
 };
 
 // Globally-unique item IDs (random within Number.MAX_SAFE_INTEGER). Avoids
@@ -1307,6 +1346,7 @@ async function save() {
       sidebarCollapsed: state.sidebarCollapsed,
       panelMinimized: state.panelMinimized,
       labelsVisible: state.labelsVisible,
+      view: state.view,
     };
     if (window.storage && window.storage.set) {
       await window.storage.set(STORAGE_KEY, JSON.stringify(data));
@@ -1423,6 +1463,7 @@ async function load() {
     if (data.sidebarCollapsed) state.sidebarCollapsed = true;
     if (data.panelMinimized) state.panelMinimized = true;
     if (data.labelsVisible === false) state.labelsVisible = false;
+    if (data.view) state.view = data.view;
     // Migration: stamp existing items lacking _ts so sync LWW treats them as
     // "ancient" (any timestamped change overrides them); ensure tombstone maps
     // exist for every floor.
@@ -3326,6 +3367,40 @@ document.getElementById('sum-csv').addEventListener('click', () => summaryTab ==
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && summaryModalBg.classList.contains('open')) summaryModalBg.classList.remove('open'); });
 
 // ============================================================
+// VIEW TABS (Furniture / Windows / Switches)
+// ============================================================
+// Top-level layer switcher. Each view arms its layer for editing, focuses it
+// (the others dim to non-interactive context), and shows the matching tools.
+function applyView(v, skipSave) {
+  v = v || state.view || 'furniture';
+  state.view = v;
+  document.querySelectorAll('#view-tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  document.body.classList.remove('view-furniture', 'view-windows', 'view-switches');
+  document.body.classList.add('view-' + v);
+  // The view drives placement mode for its layer.
+  state.windowMode = (v === 'windows');
+  state.switchMode = (v === 'switches');
+  // Leaving Furniture view also drops the furniture-only Measure/Label tools.
+  if (v !== 'furniture') {
+    if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); }
+    if (state.labelMode) { state.labelMode = false; window.__applyLabelMode && window.__applyLabelMode(); }
+  }
+  window.__applyWindowMode && window.__applyWindowMode();
+  window.__applySwitchMode && window.__applySwitchMode();
+  // Keep only the active layer's selection so the right panel matches the view.
+  if (v !== 'furniture') state.selectedId = null;
+  if (v !== 'windows') state.selectedWindowId = null;
+  if (v !== 'switches') state.selectedSwitchId = null;
+  renderFloor();
+  if (!skipSave) scheduleSave();
+}
+(function wireViewTabs() {
+  document.querySelectorAll('#view-tabs button').forEach(b => {
+    b.addEventListener('click', () => applyView(b.dataset.view));
+  });
+})();
+
+// ============================================================
 // PROPERTY PANEL BINDINGS
 // ============================================================
 function bindProp(id, key, parse) {
@@ -3470,18 +3545,8 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
-  if (state.windowMode && e.key === 'Escape') {
-    state.windowMode = false;
-    if (window.__applyWindowMode) window.__applyWindowMode();
-    e.preventDefault();
-    return;
-  }
-  if (state.switchMode && e.key === 'Escape') {
-    state.switchMode = false;
-    if (window.__applySwitchMode) window.__applySwitchMode();
-    e.preventDefault();
-    return;
-  }
+  // Window/switch placement is driven by the view tabs, not Esc — Esc only
+  // deselects the current pin (handled by the selected-window/switch blocks below).
   // Selected room label: Delete removes, Esc deselects.
   if (state.selectedRoomLabelId != null && (e.key === 'Delete' || e.key === 'Backspace')) {
     deleteRoomLabel(state.selectedRoomLabelId);
@@ -3908,7 +3973,7 @@ document.getElementById('sync-clear').addEventListener('click', () => {
   applySidebarCollapsed();
   applyPropsCollapsed();
   applyLabelsVisible();
-  renderFloor();
+  applyView(state.view, true);
   setTimeout(() => {
     if (state.zoom === 1.0) {
       const f = getFloor(state.currentFloor);
