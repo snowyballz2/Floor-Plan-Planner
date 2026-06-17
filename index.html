@@ -353,6 +353,38 @@
   .si-add:hover { border-color: #6d28d9; color: #6d28d9; }
   .wi-badge.switch { background: #6d28d9; }
 
+  /* ---- Summary modal (windows + switches schedule) ---- */
+  .sum-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+  .sum-head h2 { margin: 0; }
+  .sum-tabs { display: flex; gap: 4px; }
+  .sum-tab { padding: 6px 12px; border: 1px solid var(--border); background: var(--paper); border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; color: var(--ink-soft); }
+  .sum-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .sum-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .sum-toolbar button { padding: 5px 10px; border: 1px solid var(--border); background: var(--paper); border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; color: var(--ink); }
+  .sum-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+  .sum-count { font-size: 12px; color: var(--ink-faint); }
+  .sum-body { max-height: 56vh; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--paper-dim); padding: 6px; }
+  .sum-floor { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); margin: 8px 4px 4px; }
+  .sum-item { background: var(--paper); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 5px; }
+  .sum-item > summary { list-style: none; cursor: pointer; padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+  .sum-item > summary::-webkit-details-marker { display: none; }
+  .sum-item > summary::before { content: '▸'; color: var(--ink-faint); font-size: 11px; flex: 0 0 auto; }
+  .sum-item[open] > summary::before { content: '▾'; }
+  .sum-num { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex: 0 0 auto; }
+  .sum-num.win { background: var(--accent); border-radius: 50%; }
+  .sum-num.sw { background: #6d28d9; border-radius: 4px; }
+  .sum-label { font-weight: 600; font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sum-meta { margin-left: auto; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; text-align: right; flex: 0 0 auto; }
+  .sum-warn { color: var(--danger); }
+  .sum-dim { color: var(--ink-faint); }
+  .sum-detail { padding: 6px 12px 11px 38px; border-top: 1px solid var(--border); }
+  .sum-kv { display: flex; gap: 10px; font-size: 12px; padding: 3px 0; }
+  .sum-kv b { flex: 0 0 118px; color: var(--ink-soft); font-weight: 600; }
+  .sum-kv span { color: var(--ink); }
+  .sum-locate { margin-top: 8px; padding: 5px 10px; border: 1px solid var(--border); background: var(--paper); border-radius: 5px; cursor: pointer; font: inherit; font-size: 12px; color: var(--accent); }
+  .sum-locate:hover { border-color: var(--accent); }
+  .sum-empty { padding: 24px; text-align: center; color: var(--ink-faint); font-size: 13px; }
+
   /* "Show labels" toggle: hides item titles + edge dimension callouts + room labels. */
   body.no-labels .furniture .label,
   body.no-labels .furniture .dims,
@@ -749,6 +781,7 @@
     <button id="room-label-add-btn" title="Add room label (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🏷 Label</button>
     <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟 Windows</button>
     <button id="switch-add-btn" title="Add light switch / gang (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">💡 Switches</button>
+    <button id="summary-open-btn" title="Window &amp; switch schedule" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📋 Summary</button>
   </div>
 
   <div class="header-spacer"></div>
@@ -970,6 +1003,29 @@
       <button id="sync-test">Test connection</button>
       <button id="sync-close">Close</button>
       <button class="primary" id="sync-now">Save &amp; Sync</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="summary-modal-bg">
+  <div class="modal" style="width:580px;max-width:92vw;">
+    <div class="sum-head">
+      <h2>Summary</h2>
+      <div class="sum-tabs">
+        <button class="sum-tab active" data-tab="windows">🪟 Windows</button>
+        <button class="sum-tab" data-tab="switches">💡 Switches</button>
+      </div>
+    </div>
+    <div class="sum-toolbar">
+      <span class="sum-count" id="sum-count"></span>
+      <span style="flex:1"></span>
+      <button id="sum-expand">Expand all</button>
+      <button id="sum-collapse">Collapse all</button>
+      <button id="sum-csv">⤓ CSV</button>
+    </div>
+    <div class="sum-body" id="sum-body"></div>
+    <div class="actions">
+      <button id="summary-close">Close</button>
     </div>
   </div>
 </div>
@@ -3168,6 +3224,94 @@ let swDrag = null;
   layer.addEventListener('pointerup', () => { if (swDrag) { swDrag = null; scheduleSave(); } });
   layer.addEventListener('pointercancel', () => { if (swDrag) { swDrag = null; scheduleSave(); } });
 })();
+
+// ============================================================
+// SUMMARY (windows + switches schedule)
+// ============================================================
+let summaryTab = 'windows';
+const summaryModalBg = document.getElementById('summary-modal-bg');
+
+function openSummary(tab) {
+  if (tab) summaryTab = tab;
+  renderSummary();
+  summaryModalBg.classList.add('open');
+}
+
+function renderSummary() {
+  document.querySelectorAll('.sum-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === summaryTab));
+  const body = document.getElementById('sum-body');
+  const countEl = document.getElementById('sum-count');
+  let html = '', total = 0;
+  if (summaryTab === 'windows') {
+    for (const f of getAllFloors()) {
+      const list = state.windows[f.id] || [];
+      if (!list.length) continue;
+      html += `<div class="sum-floor">${winEscHtml(String(f.name || f.id))}</div>`;
+      list.forEach((w, i) => {
+        total++;
+        const o = windowOrder(w), st = windowStatus(w);
+        const size = o ? `${inchFrac(o.ow)} × ${inchFrac(o.oh)}` : '<span class="sum-dim">not measured</span>';
+        const triv = arr => arr.map(v => v == null ? '—' : inchFrac(v)).join(' · ');
+        html += `<details class="sum-item">
+          <summary><span class="sum-num win">${i + 1}</span><span class="sum-label">${winEscHtml(w.label)}</span><span class="sum-meta">${size}${o ? ` · ${w.mount}` : ''}${st.square === false ? ' · <span class="sum-warn">out of square</span>' : ''}</span></summary>
+          <div class="sum-detail">
+            <div class="sum-kv"><b>Type / mount</b><span>${winEscHtml(w.type)} · ${w.mount}</span></div>
+            <div class="sum-kv"><b>Widths (t/m/b)</b><span>${triv(w.w)}</span></div>
+            <div class="sum-kv"><b>Heights (l/c/r)</b><span>${triv(w.h)}</span></div>
+            <div class="sum-kv"><b>Order size</b><span>${o ? `${inchFrac(o.ow)} × ${inchFrac(o.oh)}` : '—'}</span></div>
+            <div class="sum-kv"><b>Depth</b><span>${w.depth == null ? '—' : inchFrac(w.depth)}</span></div>
+            <div class="sum-kv"><b>Diagonals</b><span>${triv(w.diag)}${st.square === true ? ' (square)' : st.square === false ? ' (OUT of square)' : ''}</span></div>
+            ${w.notes ? `<div class="sum-kv"><b>Notes</b><span>${winEscHtml(w.notes)}</span></div>` : ''}
+            <button class="sum-locate" data-kind="window" data-floor="${f.id}" data-id="${w.id}">Locate on plan ↗</button>
+          </div>
+        </details>`;
+      });
+    }
+    countEl.textContent = total ? `${total} window${total !== 1 ? 's' : ''}` : '';
+    if (!total) html = '<div class="sum-empty">No windows yet. Use the 🪟 Windows tool to add some.</div>';
+  } else {
+    for (const f of getAllFloors()) {
+      const list = state.switches[f.id] || [];
+      if (!list.length) continue;
+      html += `<div class="sum-floor">${winEscHtml(String(f.name || f.id))}</div>`;
+      list.forEach((s, i) => {
+        total++;
+        const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
+        const paired = s.switches.filter(x => x.pairedLocId != null).length;
+        const meta = `${s.switches.length}-gang${dimmers ? ` · ${dimmers} dimmer${dimmers !== 1 ? 's' : ''}` : ''}${paired ? ` · ${paired} paired` : ''}`;
+        const rows = s.switches.map((sw, j) => `<div class="sum-kv"><b>#${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${sw.type}${sw.pairedLocId != null ? ` · ↔ paired with ${winEscHtml(switchLocName(sw.pairedLocId) || '(missing)')}` : ''}</span></div>`).join('');
+        html += `<details class="sum-item">
+          <summary><span class="sum-num sw">${i + 1}</span><span class="sum-label">${winEscHtml(s.label)}</span><span class="sum-meta">${meta}</span></summary>
+          <div class="sum-detail">${rows}<button class="sum-locate" data-kind="switch" data-floor="${f.id}" data-id="${s.id}">Locate on plan ↗</button></div>
+        </details>`;
+      });
+    }
+    countEl.textContent = total ? `${total} location${total !== 1 ? 's' : ''}` : '';
+    if (!total) html = '<div class="sum-empty">No switches yet. Use the 💡 Switches tool to add some.</div>';
+  }
+  body.innerHTML = html;
+  body.querySelectorAll('.sum-locate').forEach(b => b.addEventListener('click', () => {
+    summaryLocate(b.dataset.kind, b.dataset.floor, isNaN(+b.dataset.id) ? b.dataset.id : +b.dataset.id);
+  }));
+}
+
+function summaryLocate(kind, floorId, id) {
+  state.currentFloor = String(floorId);
+  state.selectedId = null; state.selectedMeasurementId = null; state.selectedRoomLabelId = null;
+  renderFloor();
+  if (kind === 'window') selectWindow(id); else selectSwitch(id);
+  summaryModalBg.classList.remove('open');
+  scheduleSave();
+}
+
+document.getElementById('summary-open-btn').addEventListener('click', () => openSummary());
+document.getElementById('summary-close').addEventListener('click', () => summaryModalBg.classList.remove('open'));
+summaryModalBg.addEventListener('click', (e) => { if (e.target === summaryModalBg) summaryModalBg.classList.remove('open'); });
+document.querySelectorAll('.sum-tab').forEach(b => b.addEventListener('click', () => { summaryTab = b.dataset.tab; renderSummary(); }));
+document.getElementById('sum-expand').addEventListener('click', () => document.querySelectorAll('#sum-body .sum-item').forEach(d => d.open = true));
+document.getElementById('sum-collapse').addEventListener('click', () => document.querySelectorAll('#sum-body .sum-item').forEach(d => d.open = false));
+document.getElementById('sum-csv').addEventListener('click', () => summaryTab === 'windows' ? exportWindowsCsv() : exportSwitchesCsv());
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && summaryModalBg.classList.contains('open')) summaryModalBg.classList.remove('open'); });
 
 // ============================================================
 // PROPERTY PANEL BINDINGS
