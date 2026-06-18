@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Floor Plan — Furniture Planner</title>
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -813,7 +813,7 @@
   .canvas-wrapper { touch-action: pan-x pan-y; }
   .furniture, .room-label, .m-handle, .win-pin, .sw-pin { touch-action: none; }
   @media (max-width: 768px) {
-    header { padding: 5px 8px; gap: 6px; }
+    header { padding: calc(5px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 5px calc(8px + env(safe-area-inset-left)); gap: 6px; }
     .floor-tabs, .view-tabs { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
     .floor-tabs::-webkit-scrollbar, .view-tabs::-webkit-scrollbar { display: none; }
     .floor-tabs button { padding: 5px 11px; font-size: 12px; white-space: nowrap; }
@@ -830,7 +830,7 @@
     .sidebar { left: 0; }
     .properties { right: 0; }
     .canvas-wrapper { padding: 8px; }
-    .status { padding: 3px 10px; font-size: 10px; gap: 10px; }
+    .status { padding: 3px calc(10px + env(safe-area-inset-right)) calc(3px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); font-size: 10px; gap: 10px; }
   }
 </style>
 </head>
@@ -2636,7 +2636,7 @@ let pinchStart = null;
   });
   function end(e) {
     const t = tap;
-    const wasTap = t && e.type === 'pointerup' && e.pointerId === t.id && !t.moved && (Date.now() - t.t) < 600 && activePointers.size <= 1;
+    const wasTap = t && e.type === 'pointerup' && e.pointerId === t.id && !t.moved && activePointers.size <= 1;
     activePointers.delete(e.pointerId);
     if (activePointers.size < 2) pinchStart = null;
     if (!wasTap) { if (t && e.pointerId === t.id) tap = null; return; }
@@ -2897,7 +2897,7 @@ function deleteWindow(id) {
 
 // ---- measurement math (inches) ----
 const winNum = v => { if (v === '' || v == null) return null; const n = parseFloat(v); return isNaN(n) ? null : n; };
-const winFilled = arr => arr.map(winNum).filter(v => v != null);
+const winFilled = arr => arr.map(winNum).filter(v => v != null && v > 0);
 const roundEighthIn = x => Math.round(x * 8) / 8;
 function inchFrac(x) {
   if (x == null || isNaN(x)) return '—';
@@ -3150,6 +3150,31 @@ function switchLocName(id) {
   for (const f of getAllFloors()) for (const s of (state.switches[f.id] || [])) if (String(s.id) === String(id)) return s.label;
   return null;
 }
+function findSwitchLoc(id) {
+  for (const f of getAllFloors()) {
+    const loc = (state.switches[f.id] || []).find(s => String(s.id) === String(id));
+    if (loc) return loc;
+  }
+  return null;
+}
+// Pairing is reciprocal: linking A's switch to location B also links a switch in
+// B back to A, so the pair shows up — and can be unlinked — from either side.
+function setSwitchPair(loc, swIdx, targetId) {
+  const prev = loc.switches[swIdx].pairedLocId;
+  if (prev != null && String(prev) !== String(targetId)) {
+    const pl = findSwitchLoc(prev);
+    if (pl) { pl.switches.forEach(sw => { if (String(sw.pairedLocId) === String(loc.id)) sw.pairedLocId = null; }); touch(pl); }
+  }
+  loc.switches[swIdx].pairedLocId = targetId || null;
+  if (targetId) {
+    const tgt = findSwitchLoc(targetId);
+    if (tgt && !tgt.switches.some(sw => String(sw.pairedLocId) === String(loc.id))) {
+      const slot = tgt.switches.find(sw => sw.pairedLocId == null) || tgt.switches[0];
+      if (slot) { slot.pairedLocId = loc.id; touch(tgt); }
+    }
+  }
+  touch(loc);
+}
 
 function newSwitch(x, y) {
   const f = getFloor(state.currentFloor);
@@ -3184,6 +3209,8 @@ function deleteSwitch(id) {
   if (idx < 0) return;
   items.splice(idx, 1);
   tombstoneSwitch(state.currentFloor, id);
+  // Clear any pairings that pointed to this deleted location (no dangling refs).
+  for (const fl of getAllFloors()) for (const s of (state.switches[fl.id] || [])) for (const sw of s.switches) if (String(sw.pairedLocId) === String(id)) { sw.pairedLocId = null; touch(s); }
   if (state.selectedSwitchId === id) state.selectedSwitchId = null;
   closePanelOnMobile();
   renderSwitches();
@@ -3200,17 +3227,17 @@ function renderSwitches() {
   // Connector lines between paired locations (same floor only — cross-floor pairs still record in data/CSV).
   svg.setAttribute('width', f.w); svg.setAttribute('height', f.h); svg.setAttribute('viewBox', `0 0 ${f.w} ${f.h}`);
   const byId = {}; list.forEach(s => byId[s.id] = s);
-  let lines = '';
+  let lines = ''; const drawn = new Set();
   list.forEach(s => {
     const x1 = f.offsetX + s.x * f.pxPerFt, y1 = f.offsetY + s.y * f.pxPerFt;
-    const seen = {};
     s.switches.forEach(sw => {
-      if (sw.pairedLocId != null && byId[sw.pairedLocId] && !seen[sw.pairedLocId]) {
-        seen[sw.pairedLocId] = 1;
-        const t = byId[sw.pairedLocId];
-        const x2 = f.offsetX + t.x * f.pxPerFt, y2 = f.offsetY + t.y * f.pxPerFt;
-        lines += `<line class="si-link" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
-      }
+      if (sw.pairedLocId == null || !byId[sw.pairedLocId]) return;
+      const key = [String(s.id), String(sw.pairedLocId)].sort().join('|'); // one line per pair (reciprocal links)
+      if (drawn.has(key)) return;
+      drawn.add(key);
+      const t = byId[sw.pairedLocId];
+      const x2 = f.offsetX + t.x * f.pxPerFt, y2 = f.offsetY + t.y * f.pxPerFt;
+      lines += `<line class="si-link" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
     });
   });
   svg.innerHTML = lines;
@@ -3295,8 +3322,9 @@ function wireSwitchInspector(container, loc) {
   // paired-with dropdown
   container.querySelectorAll('[data-pair]').forEach(sel => {
     sel.addEventListener('change', () => {
-      loc.switches[+sel.dataset.pair].pairedLocId = sel.value ? (isNaN(+sel.value) ? sel.value : +sel.value) : null;
-      touch(loc); renderSwitches(); scheduleSave();
+      const val = sel.value ? (isNaN(+sel.value) ? sel.value : +sel.value) : null;
+      setSwitchPair(loc, +sel.dataset.pair, val);
+      renderSwitches(); renderSwitchInspector(container, true); scheduleSave();
     });
   });
   // remove a switch from the gang (last one removes the whole location)
