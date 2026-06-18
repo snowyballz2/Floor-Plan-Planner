@@ -1059,35 +1059,42 @@
   <div class="modal" style="width:380px;">
     <h2>Cloud Sync</h2>
     <p style="font-size:11px;color:var(--ink-faint);margin-bottom:14px;line-height:1.5;">
-      Share floor plans across devices via a private GitHub Gist. Same Gist ID
-      on every device. Changes merge by per-item timestamp; deletions on one
-      device propagate to others.
+      Sync across devices via a private GitHub Gist. Use the <b>same Gist ID + token</b>
+      on each device — your browser/keychain can remember them like a login.
       <br><br>
-      <a href="https://github.com/settings/tokens?type=beta" target="_blank" style="color:var(--accent);">Create a fine-grained token</a>
-      with <em>Gists: Read &amp; Write</em>. Token lives in localStorage on this device only.
+      No gist yet? Paste a token and tap <em>Create new sync</em>. Need a token?
+      <a href="https://github.com/settings/tokens?type=beta" target="_blank" style="color:var(--accent);">Make a fine-grained one</a>
+      with <em>Gists: Read &amp; Write</em>.
     </p>
-    <div class="field">
-      <label>Gist ID</label>
-      <input type="text" id="sync-gist-id" placeholder="e.g. 8f3a7c…" style="font-family:'JetBrains Mono',monospace;">
-    </div>
-    <div class="field">
-      <label>GitHub Token</label>
-      <input type="password" id="sync-token-input" placeholder="ghp_… or github_pat_…" style="font-family:'JetBrains Mono',monospace;">
-    </div>
+    <form id="sync-form" method="post" action="javascript:void(0)" autocomplete="on">
+      <div class="field">
+        <label for="sync-gist-id">Gist ID</label>
+        <input type="text" id="sync-gist-id" name="login" autocomplete="username" placeholder="e.g. 8f3a7c…" style="font-family:'JetBrains Mono',monospace;font-size:16px;">
+      </div>
+      <div class="field">
+        <label for="sync-token-input">GitHub Token</label>
+        <input type="password" id="sync-token-input" name="pass" autocomplete="current-password" placeholder="github_pat_… or ghp_…" style="font-family:'JetBrains Mono',monospace;font-size:16px;">
+      </div>
+      <div class="actions">
+        <button type="button" id="sync-create" style="margin-right:auto;">+ Create new sync</button>
+        <button type="submit" class="primary" id="sync-now">Save &amp; Connect</button>
+      </div>
+    </form>
     <div class="field">
       <label>Status</label>
       <div id="sync-status" style="font-size:11px;color:var(--ink-faint);font-family:'JetBrains Mono',monospace;min-height:14px;">Not configured</div>
     </div>
-    <div class="field">
-      <label>Diagnostic</label>
-      <div id="sync-diag" style="font-size:11px;color:var(--ink-faint);font-family:'JetBrains Mono',monospace;white-space:pre-wrap;max-height:140px;overflow:auto;background:var(--paper);padding:6px;border:1px solid var(--border);border-radius:4px;">Click "Test connection" to inspect.</div>
-    </div>
+    <details style="margin-bottom:12px;">
+      <summary style="font-size:11px;color:var(--ink-soft);cursor:pointer;">Diagnostics</summary>
+      <div id="sync-diag" style="font-size:11px;color:var(--ink-faint);font-family:'JetBrains Mono',monospace;white-space:pre-wrap;max-height:140px;overflow:auto;background:var(--paper);padding:6px;border:1px solid var(--border);border-radius:4px;margin:8px 0;">Click "Test connection" to inspect.</div>
+      <div class="actions">
+        <button id="sync-size">Size check</button>
+        <button id="sync-test">Test connection</button>
+      </div>
+    </details>
     <div class="actions">
       <button id="sync-clear" style="color:var(--danger);border-color:rgba(220,38,38,0.3);margin-right:auto;">Clear creds</button>
-      <button id="sync-size">Size check</button>
-      <button id="sync-test">Test connection</button>
       <button id="sync-close">Close</button>
-      <button class="primary" id="sync-now">Save &amp; Sync</button>
     </div>
   </div>
 </div>
@@ -3996,13 +4003,36 @@ function openSyncModal() {
 document.getElementById('sync-open-btn').addEventListener('click', openSyncModal);
 document.getElementById('sync-close').addEventListener('click', () => syncModalBg.classList.remove('open'));
 syncModalBg.addEventListener('click', (e) => { if (e.target === syncModalBg) syncModalBg.classList.remove('open'); });
-document.getElementById('sync-now').addEventListener('click', async () => {
+async function syncConnect() {
   const gistId = document.getElementById('sync-gist-id').value.trim();
   const token  = document.getElementById('sync-token-input').value.trim();
-  if (!gistId || !token) { setSyncStatus('Enter both fields', 'err'); return; }
+  if (!gistId || !token) { setSyncStatus('Enter both fields (or tap "Create new sync")', 'err'); return; }
   localStorage.setItem(SYNC_GIST_ID_KEY, gistId);
   localStorage.setItem(SYNC_TOKEN_KEY, token);
   await doSync({ manual: true });
+}
+// Submitting the form (Save & Connect) saves the creds AND lets the browser /
+// iCloud Keychain offer to remember the Gist ID (username) + token (password).
+document.getElementById('sync-form').addEventListener('submit', (e) => { e.preventDefault(); syncConnect(); });
+// Create a brand-new private Gist from just the token — no manually-made gist needed.
+document.getElementById('sync-create').addEventListener('click', async () => {
+  const token = document.getElementById('sync-token-input').value.trim();
+  if (!token) { setSyncStatus('Paste your GitHub token first, then tap Create.', 'err'); return; }
+  setSyncStatus('Creating a new private Gist…');
+  try {
+    const r = await fetch('https://api.github.com/gists', {
+      method: 'POST',
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: 'Floor Plan Planner Sync', public: false, files: { [SYNC_FILENAME]: { content: JSON.stringify(getSyncPayload()) } } })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status + (r.status === 401 ? ' — bad token' : ''));
+    const d = await r.json();
+    if (!d.id) throw new Error('no gist id returned');
+    document.getElementById('sync-gist-id').value = d.id;
+    localStorage.setItem(SYNC_GIST_ID_KEY, d.id);
+    localStorage.setItem(SYNC_TOKEN_KEY, token);
+    setSyncStatus('Created! Gist ID filled in — tap "Save & Connect" to finish.');
+  } catch (err) { setSyncStatus('Could not create: ' + err.message, 'err'); }
 });
 document.getElementById('sync-size').addEventListener('click', () => {
   const diag = document.getElementById('sync-diag');
