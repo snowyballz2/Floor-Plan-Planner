@@ -812,25 +812,68 @@
      opt out so dragging them doesn't scroll the wrapper. */
   .canvas-wrapper { touch-action: pan-x pan-y; }
   .furniture, .room-label, .m-handle, .win-pin, .sw-pin { touch-action: none; }
+  .sheet-bar, #mobile-add-fab { display: none; }
   @media (max-width: 768px) {
-    header { padding: calc(5px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 5px calc(8px + env(safe-area-inset-left)); gap: 6px; }
-    .floor-tabs, .view-tabs { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
-    .floor-tabs::-webkit-scrollbar, .view-tabs::-webkit-scrollbar { display: none; }
-    .floor-tabs button { padding: 5px 11px; font-size: 12px; white-space: nowrap; }
-    .view-tabs button { padding: 5px 10px; font-size: 12px; white-space: nowrap; }
-    .controls { gap: 5px; flex-wrap: wrap; }
-    .controls button { padding: 5px 8px; font-size: 12px; }
-    /* On phones, pinch-to-zoom replaces the −/%/+ buttons (keep ⊟ fit); hide niche tools + sync chip. */
-    .controls label.toggle, #measure-toggle, #room-label-add-btn, #sync-open-btn, #zoom-out, #zoom-in, #zoom-level { display: none; }
+    /* ---- slim top bar: floor tabs + a few actions ---- */
+    header {
+      padding: calc(4px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 4px calc(8px + env(safe-area-inset-left));
+      gap: 6px; flex-wrap: nowrap; align-items: center;
+    }
+    .floor-tabs { flex: 1; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .floor-tabs::-webkit-scrollbar { display: none; }
+    .floor-tabs button { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+    .controls { gap: 4px; flex-wrap: nowrap; flex: 0 0 auto; }
+    .controls button { padding: 6px 9px; font-size: 15px; }
+    #add-custom-btn, .controls label.toggle, #measure-toggle, #room-label-add-btn,
+    #zoom-out, #zoom-in, #zoom-level, #clear-floor, #sync-btn-status { display: none; }
     .header-spacer { display: none; }
-    #sync-btn-status { display: none; }
-    /* Side panels overlay the canvas so the plan always gets full width. */
-    main { position: relative; }
-    .sidebar, .properties { position: absolute; top: 0; bottom: 0; z-index: 30; box-shadow: var(--shadow-lg); }
-    .sidebar { left: 0; }
-    .properties { right: 0; }
+
+    /* ---- bottom tab bar = the three views ---- */
+    .view-tabs {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+      display: flex; gap: 0; border: none; border-top: 1px solid var(--border); border-radius: 0;
+      background: var(--paper); padding-bottom: env(safe-area-inset-bottom);
+      box-shadow: 0 -2px 12px rgba(26,35,50,0.07);
+    }
+    .view-tabs button {
+      flex: 1; border: none; border-radius: 0; padding: 9px 4px; font-size: 12.5px;
+      font-weight: 500; color: var(--ink-faint); border-top: 2px solid transparent; background: transparent;
+    }
+    .view-tabs button[data-view="furniture"].active { color: var(--ink); border-top-color: var(--ink); background: transparent; }
+    .view-tabs button[data-view="windows"].active { color: var(--accent); border-top-color: var(--accent); background: transparent; }
+    .view-tabs button[data-view="switches"].active { color: #6d28d9; border-top-color: #6d28d9; background: transparent; }
+
+    /* ---- canvas fills the middle, clears the bottom bar ---- */
+    main { position: relative; padding-bottom: calc(46px + env(safe-area-inset-bottom)); }
     .canvas-wrapper { padding: 8px; }
-    .status { padding: 3px calc(10px + env(safe-area-inset-right)) calc(3px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); font-size: 10px; gap: 10px; }
+    .status { display: none; }
+
+    /* ---- side panels become full-screen sheets ---- */
+    .sidebar, .properties {
+      position: fixed; inset: 0; width: auto; z-index: 60; padding: 0;
+      background: var(--paper); transition: transform 0.25s ease; overflow-y: auto;
+    }
+    .sidebar.collapsed, .properties.collapsed { transform: translateY(101%); }
+    #sidebar-toggle, #props-toggle { display: none; }
+    .sheet-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; background: var(--paper); z-index: 2;
+      padding: calc(10px + env(safe-area-inset-top)) 14px 10px; border-bottom: 1px solid var(--border);
+    }
+    .sheet-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+    .sheet-done { background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 8px 18px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+    #properties-content, #sidebar-content { padding: 14px calc(14px + env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left)); }
+    #properties-content > h3 { display: none; }
+
+    /* ---- FAB opens the furniture palette (furniture view only) ---- */
+    body.view-furniture #mobile-add-fab {
+      display: flex; align-items: center; justify-content: center;
+      position: fixed; right: 16px; bottom: calc(58px + env(safe-area-inset-bottom)); z-index: 45;
+      width: 56px; height: 56px; border-radius: 50%; border: none;
+      background: var(--accent); color: #fff; font-size: 30px; line-height: 1;
+      box-shadow: var(--shadow-lg); cursor: pointer;
+    }
   }
 </style>
 </head>
@@ -878,6 +921,7 @@
 <main>
   <aside class="sidebar" id="sidebar">
     <button type="button" class="sidebar-toggle" id="sidebar-toggle" title="Collapse">‹</button>
+    <div class="sheet-bar"><span class="sheet-title">Add furniture</span><button type="button" class="sheet-done" id="sidebar-done">Done</button></div>
     <div id="sidebar-content"></div>
     <div id="view-hint-windows" class="view-hint"><b>🪟 Windows view</b>Click the plan to drop a window pin, then enter its 3 widths + 3 heights on the right. Click a pin to edit, drag to move. Open 📋 Summary for the full list.</div>
     <div id="view-hint-switches" class="view-hint"><b>💡 Switches view</b>Click the plan to add a switch location, then build its gang on the right — add switches, set Dimmer/Normal, and pair 3-ways to another location.</div>
@@ -899,6 +943,7 @@
 
   <aside class="properties" id="properties">
     <button type="button" class="props-toggle" id="props-toggle" title="Collapse">›</button>
+    <div class="sheet-bar"><span class="sheet-title">Edit</span><button type="button" class="sheet-done" id="props-done">Done</button></div>
     <div id="properties-content">
       <h3>Properties</h3>
       <div id="window-inspector" style="display:none;"></div>
@@ -979,6 +1024,7 @@
   </aside>
 </main>
 
+<button id="mobile-add-fab" type="button" aria-label="Add furniture">+</button>
 <div class="status">
   <span>Floor <span id="status-floor">1</span></span>
   <span class="mono">Scale: <span id="status-scale">23.48</span> px / ft</span>
@@ -2314,7 +2360,7 @@ function renderSidebar() {
       const btn = document.createElement('button');
       btn.className = 'preset-btn';
       btn.innerHTML = `${escHtml(p.label)}<span class="dims">${ftToInches(p.w)} × ${ftToInches(p.d)}</span>`;
-      btn.addEventListener('click', () => addItem({ ...p }));
+      btn.addEventListener('click', () => { addItem({ ...p }); closeSidebarOnMobile(); });
       grid.appendChild(btn);
     }
     sidebar.appendChild(grid);
@@ -2450,12 +2496,14 @@ els.furnitureLayer.addEventListener('pointerdown', (e) => {
       startMouse: startFt,
     };
   }
+  drag.sx = e.clientX; drag.sy = e.clientY; drag.moved = false;
   e.target.setPointerCapture(e.pointerId);
   e.preventDefault();
 });
 
 els.furnitureLayer.addEventListener('pointermove', (e) => {
   if (!drag) return;
+  if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 8) drag.moved = true;
   const it = findItem(drag.id);
   if (!it) return;
   const rect = els.canvas.getBoundingClientRect();
@@ -2489,6 +2537,7 @@ els.furnitureLayer.addEventListener('pointermove', (e) => {
 els.furnitureLayer.addEventListener('pointerup', () => {
   if (drag) {
     touch(findItem(drag.id));
+    if (!drag.moved && drag.type === 'move') openPanelOnMobile();
     drag = null;
     scheduleSave();
   }
@@ -2592,6 +2641,20 @@ function closePanelOnMobile() {
     applyPropsCollapsed();
   }
 }
+function openSidebarOnMobile() {
+  if (window.matchMedia('(max-width: 768px)').matches) { state.sidebarCollapsed = false; applySidebarCollapsed(); }
+}
+function closeSidebarOnMobile() {
+  if (window.matchMedia('(max-width: 768px)').matches && !state.sidebarCollapsed) { state.sidebarCollapsed = true; applySidebarCollapsed(); }
+}
+// Mobile full-screen sheet controls.
+document.getElementById('props-done').addEventListener('click', () => {
+  state.selectedId = null; state.selectedWindowId = null; state.selectedSwitchId = null;
+  state.panelMinimized = true; applyPropsCollapsed();
+  renderWindows(); renderSwitches(); renderFurniture();
+});
+document.getElementById('sidebar-done').addEventListener('click', closeSidebarOnMobile);
+document.getElementById('mobile-add-fab').addEventListener('click', openSidebarOnMobile);
 // Zoom around a screen point, keeping that point under the fingers.
 function setZoomAround(newZoom, sx, sy) {
   const wrap = document.getElementById('canvas-wrapper');
@@ -2657,11 +2720,11 @@ let pinchStart = null;
     if (state.windowMode) {
       if (!state.windows[state.currentFloor]) state.windows[state.currentFloor] = [];
       const w = newWindow(snapToEighth(ft.x), snapToEighth(ft.y));
-      state.windows[state.currentFloor].push(w); selectWindow(w.id); scheduleSave();
+      state.windows[state.currentFloor].push(w); selectWindow(w.id); openPanelOnMobile(); scheduleSave();
     } else if (state.switchMode) {
       if (!state.switches[state.currentFloor]) state.switches[state.currentFloor] = [];
       const sw = newSwitch(snapToEighth(ft.x), snapToEighth(ft.y));
-      state.switches[state.currentFloor].push(sw); selectSwitch(sw.id); scheduleSave();
+      state.switches[state.currentFloor].push(sw); selectSwitch(sw.id); openPanelOnMobile(); scheduleSave();
     }
   }
   wrap.addEventListener('pointerup', end);
@@ -2870,7 +2933,6 @@ function newWindow(x, y) {
 function selectWindow(id) {
   state.selectedWindowId = id;
   state.selectedSwitchId = null;
-  openPanelOnMobile();
   state.selectedId = null;
   state.selectedMeasurementId = null;
   state.selectedRoomLabelId = null;
@@ -3111,13 +3173,14 @@ let winDrag = null;
     selectWindow(w.id);
     const rect = els.canvas.getBoundingClientRect();
     const ft = getMouseFt(e, rect);
-    winDrag = { id: w.id, dx: w.x - ft.x, dy: w.y - ft.y };
+    winDrag = { id: w.id, dx: w.x - ft.x, dy: w.y - ft.y, sx: e.clientX, sy: e.clientY, moved: false };
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
     e.stopPropagation();
     e.preventDefault();
   });
   layer.addEventListener('pointermove', (e) => {
     if (!winDrag) return;
+    if (Math.abs(e.clientX - winDrag.sx) + Math.abs(e.clientY - winDrag.sy) > 8) winDrag.moved = true;
     const w = findWindow(winDrag.id);
     if (!w) return;
     const rect = els.canvas.getBoundingClientRect();
@@ -3127,7 +3190,7 @@ let winDrag = null;
     touch(w);
     renderWindows();
   });
-  layer.addEventListener('pointerup', () => { if (winDrag) { winDrag = null; scheduleSave(); } });
+  layer.addEventListener('pointerup', () => { if (winDrag) { if (!winDrag.moved) openPanelOnMobile(); winDrag = null; scheduleSave(); } });
   layer.addEventListener('pointercancel', () => { if (winDrag) { winDrag = null; scheduleSave(); } });
 })();
 
@@ -3191,7 +3254,6 @@ function newSwitch(x, y) {
 function selectSwitch(id) {
   state.selectedSwitchId = id;
   state.selectedWindowId = null;
-  openPanelOnMobile();
   state.selectedId = null;
   state.selectedMeasurementId = null;
   state.selectedRoomLabelId = null;
@@ -3393,13 +3455,14 @@ let swDrag = null;
     selectSwitch(s.id);
     const rect = els.canvas.getBoundingClientRect();
     const ft = getMouseFt(e, rect);
-    swDrag = { id: s.id, dx: s.x - ft.x, dy: s.y - ft.y };
+    swDrag = { id: s.id, dx: s.x - ft.x, dy: s.y - ft.y, sx: e.clientX, sy: e.clientY, moved: false };
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
     e.stopPropagation();
     e.preventDefault();
   });
   layer.addEventListener('pointermove', (e) => {
     if (!swDrag) return;
+    if (Math.abs(e.clientX - swDrag.sx) + Math.abs(e.clientY - swDrag.sy) > 8) swDrag.moved = true;
     const s = findSwitch(swDrag.id);
     if (!s) return;
     const rect = els.canvas.getBoundingClientRect();
@@ -3409,7 +3472,7 @@ let swDrag = null;
     touch(s);
     renderSwitches();
   });
-  layer.addEventListener('pointerup', () => { if (swDrag) { swDrag = null; scheduleSave(); } });
+  layer.addEventListener('pointerup', () => { if (swDrag) { if (!swDrag.moved) openPanelOnMobile(); swDrag = null; scheduleSave(); } });
   layer.addEventListener('pointercancel', () => { if (swDrag) { swDrag = null; scheduleSave(); } });
 })();
 
