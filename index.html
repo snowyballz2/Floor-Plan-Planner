@@ -2882,6 +2882,7 @@ function deleteWindow(id) {
   items.splice(idx, 1);
   tombstoneWindow(state.currentFloor, id);
   if (state.selectedWindowId === id) state.selectedWindowId = null;
+  closePanelOnMobile();
   renderWindows();
   renderFurniture();   // refresh panel (hide inspector)
   scheduleSave();
@@ -3177,6 +3178,7 @@ function deleteSwitch(id) {
   items.splice(idx, 1);
   tombstoneSwitch(state.currentFloor, id);
   if (state.selectedSwitchId === id) state.selectedSwitchId = null;
+  closePanelOnMobile();
   renderSwitches();
   renderFurniture();
   scheduleSave();
@@ -3449,10 +3451,9 @@ function renderSummary() {
 function summaryLocate(kind, floorId, id) {
   state.currentFloor = String(floorId);
   state.selectedId = null; state.selectedMeasurementId = null; state.selectedRoomLabelId = null;
-  renderFloor();
+  applyView(kind === 'window' ? 'windows' : 'switches'); // jump to the item's view (renders + saves)
   if (kind === 'window') selectWindow(id); else selectSwitch(id);
   summaryModalBg.classList.remove('open');
-  scheduleSave();
 }
 
 document.getElementById('summary-open-btn').addEventListener('click', () => openSummary());
