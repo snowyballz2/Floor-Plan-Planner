@@ -422,6 +422,22 @@
   body.view-windows .furniture-layer, body.view-windows .switch-layer, body.view-windows .switch-link-layer { opacity: 0.4; }
   body.view-switches .furniture-layer, body.view-switches .window-layer { opacity: 0.4; }
 
+  /* Per-layer visibility (independent of the active view). */
+  body.hide-furniture .furniture-layer { display: none; }
+  body.hide-windows .window-layer { display: none; }
+  body.hide-switches .switch-layer, body.hide-switches .switch-link-layer { display: none; }
+  .layers-wrap { position: relative; display: inline-flex; }
+  .layers-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 1100; min-width: 200px;
+    background: var(--paper); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 6px; }
+  .layers-menu[hidden] { display: none; }
+  .layers-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    background: transparent; border: none; padding: 11px 13px; font: inherit; font-size: 14.5px; color: var(--ink); border-radius: 9px; cursor: pointer; }
+  .layers-item:hover { background: var(--paper-dim); }
+  .layers-item .li-ic { font-size: 16px; }
+  .layers-item .li-check { margin-left: auto; color: var(--accent); font-weight: 700; visibility: hidden; }
+  .layers-item.on .li-check { visibility: visible; }
+  .layers-item:not(.on) { opacity: 0.5; }
+
   /* "Show labels" toggle: hides item titles + edge dimension callouts + room labels. */
   body.no-labels .furniture .label,
   body.no-labels .furniture .dims,
@@ -948,6 +964,14 @@
     <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟 Windows</button>
     <button id="switch-add-btn" title="Add light switch / gang (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">💡 Switches</button>
     <button id="summary-open-btn" title="Window &amp; switch schedule" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">📋</span><span class="blb">Summary</span></button>
+    <div class="layers-wrap" id="layers-wrap">
+      <button id="layers-btn" type="button" title="Show / hide layers" aria-haspopup="true" aria-expanded="false" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">👁</span><span class="blb">Layers</span></button>
+      <div class="layers-menu" id="layers-menu" hidden>
+        <button class="layers-item" type="button" data-layer="furniture"><span class="li-ic">🛋</span><span class="li-tx">Furniture</span><span class="li-check">✓</span></button>
+        <button class="layers-item" type="button" data-layer="windows"><span class="li-ic">🪟</span><span class="li-tx">Windows</span><span class="li-check">✓</span></button>
+        <button class="layers-item" type="button" data-layer="switches"><span class="li-ic">💡</span><span class="li-tx">Switches</span><span class="li-check">✓</span></button>
+      </div>
+    </div>
   </div>
 
   <div class="header-spacer"></div>
@@ -1415,6 +1439,8 @@ const state = {
   switchMode: false,
   // Active top-level view/layer: 'furniture' | 'windows' | 'switches'.
   view: 'furniture',
+  // Per-layer visibility toggles (independent of the active view).
+  layerVis: { furniture: true, windows: true, switches: true },
 };
 
 // Globally-unique item IDs (random within Number.MAX_SAFE_INTEGER). Avoids
@@ -1476,6 +1502,7 @@ async function save() {
       panelMinimized: state.panelMinimized,
       labelsVisible: state.labelsVisible,
       view: state.view,
+      layerVis: state.layerVis,
     };
     if (window.storage && window.storage.set) {
       await window.storage.set(STORAGE_KEY, JSON.stringify(data));
@@ -1593,6 +1620,7 @@ async function load() {
     if (data.panelMinimized) state.panelMinimized = true;
     if (data.labelsVisible === false) state.labelsVisible = false;
     if (data.view) state.view = data.view;
+    if (data.layerVis) state.layerVis = { furniture: true, windows: true, switches: true, ...data.layerVis };
     // Migration: stamp existing items lacking _ts so sync LWW treats them as
     // "ancient" (any timestamped change overrides them); ensure tombstone maps
     // exist for every floor.
@@ -3706,6 +3734,37 @@ document.addEventListener('click', (e) => {
 });
 
 // ============================================================
+// LAYER VISIBILITY (show / hide furniture, windows, switches)
+// ============================================================
+function applyLayerVis() {
+  document.body.classList.toggle('hide-furniture', !state.layerVis.furniture);
+  document.body.classList.toggle('hide-windows', !state.layerVis.windows);
+  document.body.classList.toggle('hide-switches', !state.layerVis.switches);
+  document.querySelectorAll('#layers-menu .layers-item').forEach(it => {
+    it.classList.toggle('on', !!state.layerVis[it.dataset.layer]);
+  });
+}
+document.getElementById('layers-btn').addEventListener('click', (e) => {
+  const m = document.getElementById('layers-menu');
+  m.hidden = !m.hidden;
+  e.currentTarget.setAttribute('aria-expanded', String(!m.hidden));
+  e.stopPropagation();
+});
+document.querySelectorAll('#layers-menu .layers-item').forEach(it => {
+  it.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const L = it.dataset.layer;
+    state.layerVis[L] = !state.layerVis[L];
+    applyLayerVis();
+    scheduleSave();
+  });
+});
+document.addEventListener('click', (e) => {
+  const m = document.getElementById('layers-menu');
+  if (m && !m.hidden && !e.target.closest('#layers-wrap')) m.hidden = true;
+});
+
+// ============================================================
 // PROPERTY PANEL BINDINGS
 // ============================================================
 function bindProp(id, key, parse) {
@@ -4327,6 +4386,7 @@ document.getElementById('sync-clear').addEventListener('click', () => {
   applySidebarCollapsed();
   applyPropsCollapsed();
   applyLabelsVisible();
+  applyLayerVis();
   applyView(state.view, true);
   setTimeout(() => {
     if (state.zoom === 1.0) {
