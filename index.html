@@ -14,19 +14,19 @@
 <meta name="apple-mobile-web-app-title" content="Floor Plan">
 <style>
   :root {
-    --paper: #f4efe6;
-    --paper-dim: #e8e2d4;
-    --ink: #1a2332;
-    --ink-soft: #4a5568;
-    --ink-faint: #8b95a3;
+    --paper: #faf9f6;
+    --paper-dim: #f0eee9;
+    --ink: #1b2430;
+    --ink-soft: #586273;
+    --ink-faint: #98a0ac;
     --accent: #0d9488;
     --accent-soft: #14b8a6;
-    --accent-faint: #ccfbf1;
-    --danger: #dc2626;
+    --accent-faint: #d6f0ec;
+    --danger: #e0484d;
     --warning: #d97706;
-    --border: #c9c2b3;
-    --shadow: 0 1px 3px rgba(26,35,50,0.08), 0 1px 2px rgba(26,35,50,0.04);
-    --shadow-lg: 0 4px 12px rgba(26,35,50,0.12), 0 2px 4px rgba(26,35,50,0.08);
+    --border: #e7e3db;
+    --shadow: 0 1px 2px rgba(20,28,40,0.04), 0 1px 3px rgba(20,28,40,0.05);
+    --shadow-lg: 0 10px 30px rgba(20,28,40,0.12), 0 3px 8px rgba(20,28,40,0.06);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
@@ -752,8 +752,8 @@
   .modal-bg.open { display: flex; }
   .modal {
     background: var(--paper);
-    border-radius: 8px;
-    padding: 20px;
+    border-radius: 16px;
+    padding: 22px;
     width: 320px;
     box-shadow: var(--shadow-lg);
   }
@@ -836,9 +836,11 @@
       box-shadow: 0 -2px 12px rgba(26,35,50,0.07);
     }
     .view-tabs button {
-      flex: 1; border: none; border-radius: 0; padding: 9px 4px; font-size: 12.5px;
+      flex: 1; flex-direction: column; gap: 3px; border: none; border-radius: 0; padding: 7px 4px 5px;
       font-weight: 500; color: var(--ink-faint); border-top: 2px solid transparent; background: transparent;
     }
+    .view-tabs .vt-ic { font-size: 19px; line-height: 1; }
+    .view-tabs .vt-lb { font-size: 11px; letter-spacing: 0.01em; }
     .view-tabs button[data-view="furniture"].active { color: var(--ink); border-top-color: var(--ink); background: transparent; }
     .view-tabs button[data-view="windows"].active { color: var(--accent); border-top-color: var(--accent); background: transparent; }
     .view-tabs button[data-view="switches"].active { color: #6d28d9; border-top-color: #6d28d9; background: transparent; }
@@ -850,15 +852,22 @@
 
     /* ---- side panels become full-screen sheets ---- */
     .sidebar, .properties {
-      position: fixed; inset: 0; width: auto; z-index: 60; padding: 0;
-      background: var(--paper); transition: transform 0.25s ease; overflow-y: auto;
+      position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto;
+      height: 92vh; height: 92dvh; max-height: 92vh; max-height: 92dvh;
+      z-index: 60; padding: 0; border-radius: 20px 20px 0 0;
+      background: var(--paper); box-shadow: var(--shadow-lg);
+      transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1); overflow-y: auto;
     }
-    .sidebar.collapsed, .properties.collapsed { transform: translateY(101%); }
+    .sidebar.collapsed, .properties.collapsed { transform: translateY(102%); }
     #sidebar-toggle, #props-toggle { display: none; }
     .sheet-bar {
       display: flex; align-items: center; justify-content: space-between;
       position: sticky; top: 0; background: var(--paper); z-index: 2;
-      padding: calc(10px + env(safe-area-inset-top)) 14px 10px; border-bottom: 1px solid var(--border);
+      padding: 16px 16px 12px; border-bottom: 1px solid var(--border); border-radius: 20px 20px 0 0;
+    }
+    .sheet-bar::before {
+      content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+      width: 38px; height: 4px; border-radius: 2px; background: var(--border);
     }
     .sheet-title { font-size: 16px; font-weight: 600; color: var(--ink); }
     .sheet-done { background: var(--accent); color: #fff; border: none; border-radius: 8px;
@@ -883,9 +892,9 @@
   <div class="floor-tabs" id="floor-tabs"></div>
 
   <div class="view-tabs" id="view-tabs">
-    <button data-view="furniture" class="active">🛋 Furniture</button>
-    <button data-view="windows">🪟 Windows</button>
-    <button data-view="switches">💡 Switches</button>
+    <button data-view="furniture" class="active"><span class="vt-ic">🛋</span><span class="vt-lb">Furniture</span></button>
+    <button data-view="windows"><span class="vt-ic">🪟</span><span class="vt-lb">Windows</span></button>
+    <button data-view="switches"><span class="vt-ic">💡</span><span class="vt-lb">Switches</span></button>
   </div>
 
   <div class="controls">
