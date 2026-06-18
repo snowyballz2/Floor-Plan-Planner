@@ -352,11 +352,12 @@
   .si-rows { display: flex; flex-direction: column; gap: 8px; }
   .si-row { border: 1px solid var(--border); border-radius: 7px; padding: 8px; background: var(--paper-dim); }
   .si-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
-  .si-n { width: 20px; height: 20px; border-radius: 4px; background: #6d28d9; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .si-n { min-width: 24px; height: 20px; padding: 0 5px; border-radius: 4px; background: #6d28d9; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
   .si-row-top input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); }
   .si-row-rm { border: none; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
   .si-row-rm:hover { color: var(--danger); }
   .si-pairsel { width: 100%; font: inherit; font-size: 12px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); margin-top: 6px; }
+  .si-pairnote { margin-top: 5px; font-size: 11px; font-weight: 600; color: #6d28d9; display: flex; align-items: center; gap: 4px; }
   .si-add { width: 100%; font: inherit; font-size: 12.5px; padding: 7px; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--ink-soft); cursor: pointer; margin-top: 8px; }
   .si-add:hover { border-color: #6d28d9; color: #6d28d9; }
   .wi-badge.switch { background: #6d28d9; }
@@ -1616,11 +1617,7 @@ async function load() {
     }
     if (data.switches) state.switches = data.switches;
     if (data.deletedSwitches) state.deletedSwitches = data.deletedSwitches;
-    for (const sf of ['1', '2', '3', '4']) {
-      if (!state.switches[sf]) state.switches[sf] = [];
-      if (!state.deletedSwitches[sf]) state.deletedSwitches[sf] = {};
-      for (const s of state.switches[sf]) { if (s._ts == null) s._ts = 0; if (!Array.isArray(s.switches)) s.switches = [{ control: '', type: 'normal', pairedLocId: null }]; }
-    }
+    normalizeSwitches();
     if (data.floors) state.floors = data.floors;
     if (data.deletedFloors) state.deletedFloors = data.deletedFloors;
     if (data.currentFloor) state.currentFloor = String(data.currentFloor);
@@ -1850,6 +1847,7 @@ function mergeSyncData(remote) {
       state.switches[f]        = survivors;
       state.deletedSwitches[f] = mergedDel;
     }
+    normalizeSwitches();   // give any merged-in legacy/no-id switches their fields + convert pairing
   }
   // Merge floors: per-floor LWW on the override record, plus tombstones.
   if (remote.floors) {
@@ -3309,39 +3307,94 @@ const SWITCH_TYPES = ['normal', 'dimmer'];
 
 function currentSwitches() { return state.switches[state.currentFloor] || []; }
 function findSwitch(id) { return currentSwitches().find(s => s.id === id); }
-function allSwitchLocations() {
-  const out = [];
-  for (const f of getAllFloors()) for (const s of (state.switches[f.id] || [])) out.push({ id: s.id, label: s.label, floor: f.name || f.id });
-  return out;
+
+// Naming convention: each pin is a GANG, lettered A, B, C… by its position on the
+// floor. Switches inside a gang are numbered 1, 2, 3… so a single switch reads as
+// "A1", "B2", etc. Pairing is switch↔switch (a specific switch to a specific switch).
+function gangLetter(n) {
+  let s = '';
+  n = (n | 0);
+  do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return s;
 }
-function switchLocName(id) {
-  for (const f of getAllFloors()) for (const s of (state.switches[f.id] || [])) if (String(s.id) === String(id)) return s.label;
-  return null;
-}
-function findSwitchLoc(id) {
+// Locate a single switch by its id across every floor → {gang, sw, gangIdx, swIdx, floor}.
+function findSwitchById(id) {
+  if (id == null) return null;
   for (const f of getAllFloors()) {
-    const loc = (state.switches[f.id] || []).find(s => String(s.id) === String(id));
-    if (loc) return loc;
-  }
-  return null;
-}
-// Pairing is reciprocal: linking A's switch to location B also links a switch in
-// B back to A, so the pair shows up — and can be unlinked — from either side.
-function setSwitchPair(loc, swIdx, targetId) {
-  const prev = loc.switches[swIdx].pairedLocId;
-  if (prev != null && String(prev) !== String(targetId)) {
-    const pl = findSwitchLoc(prev);
-    if (pl) { pl.switches.forEach(sw => { if (String(sw.pairedLocId) === String(loc.id)) sw.pairedLocId = null; }); touch(pl); }
-  }
-  loc.switches[swIdx].pairedLocId = targetId || null;
-  if (targetId) {
-    const tgt = findSwitchLoc(targetId);
-    if (tgt && !tgt.switches.some(sw => String(sw.pairedLocId) === String(loc.id))) {
-      const slot = tgt.switches.find(sw => sw.pairedLocId == null) || tgt.switches[0];
-      if (slot) { slot.pairedLocId = loc.id; touch(tgt); }
+    const arr = state.switches[f.id] || [];
+    for (let gi = 0; gi < arr.length; gi++) {
+      const si = (arr[gi].switches || []).findIndex(sw => String(sw.id) === String(id));
+      if (si >= 0) return { gang: arr[gi], sw: arr[gi].switches[si], gangIdx: gi, swIdx: si, floor: f };
     }
   }
-  touch(loc);
+  return null;
+}
+function switchRefById(id) {                       // "A2"
+  const h = findSwitchById(id);
+  return h ? gangLetter(h.gangIdx) + (h.swIdx + 1) : null;
+}
+function switchDescById(id) {                       // "A2 — ceiling · 2nd Floor"
+  const h = findSwitchById(id);
+  if (!h) return '(missing)';
+  return gangLetter(h.gangIdx) + (h.swIdx + 1) + (h.sw.control ? ' — ' + h.sw.control : '') + ' · ' + (h.floor.name || h.floor.id);
+}
+
+// Pairing is reciprocal and strictly 1:1 — linking A1↔B2 unlinks whatever A1 or B2
+// were paired to before, so each end always shows a single, specific partner.
+function setSwitchPair(srcGang, srcSw, targetId) {
+  if (srcSw.pairedId != null && String(srcSw.pairedId) !== String(targetId)) {
+    const prev = findSwitchById(srcSw.pairedId);
+    if (prev) { prev.sw.pairedId = null; touch(prev.gang); }
+  }
+  if (targetId == null) { srcSw.pairedId = null; touch(srcGang); return; }
+  const tgt = findSwitchById(targetId);
+  if (!tgt) { srcSw.pairedId = null; touch(srcGang); return; }
+  if (tgt.sw.pairedId != null && String(tgt.sw.pairedId) !== String(srcSw.id)) {
+    const tprev = findSwitchById(tgt.sw.pairedId);
+    if (tprev) { tprev.sw.pairedId = null; touch(tprev.gang); }
+  }
+  srcSw.pairedId = targetId;
+  tgt.sw.pairedId = srcSw.id;
+  touch(srcGang); touch(tgt.gang);
+}
+
+// Normalize the switch data: give every gang/switch the fields the current model
+// needs, then convert any legacy gang-level pairing into switch↔switch links.
+function normalizeSwitches() {
+  for (const sf of ['1', '2', '3', '4']) {
+    if (!state.switches[sf]) state.switches[sf] = [];
+    if (!state.deletedSwitches[sf]) state.deletedSwitches[sf] = {};
+    for (const s of state.switches[sf]) {
+      if (s._ts == null) s._ts = 0;
+      if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', pairedId: null }];
+      for (const sw of s.switches) {
+        if (sw.id == null) sw.id = genId();
+        if (sw.pairedId === undefined && sw.pairedLocId === undefined) sw.pairedId = null;
+      }
+    }
+  }
+  migrateSwitchPairing();
+}
+function migrateSwitchPairing() {
+  const gangs = [];
+  for (const f of getAllFloors()) for (const g of (state.switches[f.id] || [])) gangs.push(g);
+  if (!gangs.some(g => (g.switches || []).some(sw => sw.pairedLocId !== undefined))) return; // already converted
+  const gangById = {}; gangs.forEach(g => gangById[String(g.id)] = g);
+  for (const g of gangs) {
+    for (const sw of g.switches) {
+      if (sw.pairedId == null && sw.pairedLocId != null) {
+        const tgt = gangById[String(sw.pairedLocId)];
+        if (tgt) {
+          // Old data only knew the partner GANG, not the switch — zip up unclaimed
+          // switches, preferring one that pointed back at this gang.
+          let cand = tgt.switches.find(t => t.pairedId == null && String(t.pairedLocId) === String(g.id))
+                  || tgt.switches.find(t => t.pairedId == null);
+          if (cand) { sw.pairedId = cand.id; cand.pairedId = sw.id; }
+        }
+      }
+    }
+  }
+  for (const g of gangs) for (const sw of g.switches) delete sw.pairedLocId;
 }
 
 function newSwitch(x, y) {
@@ -3351,7 +3404,7 @@ function newSwitch(x, y) {
   return {
     id: genId(), x, y,
     label: base + '-S' + n,
-    switches: [{ control: '', type: 'normal', pairedLocId: null }],
+    switches: [{ id: genId(), control: '', type: 'normal', pairedId: null }],
     _ts: Date.now(),
   };
 }
@@ -3374,10 +3427,11 @@ function deleteSwitch(id) {
   if (!items) return;
   const idx = items.findIndex(s => s.id === id);
   if (idx < 0) return;
+  const removedIds = new Set((items[idx].switches || []).map(sw => String(sw.id)));
   items.splice(idx, 1);
   tombstoneSwitch(state.currentFloor, id);
-  // Clear any pairings that pointed to this deleted location (no dangling refs).
-  for (const fl of getAllFloors()) for (const s of (state.switches[fl.id] || [])) for (const sw of s.switches) if (String(sw.pairedLocId) === String(id)) { sw.pairedLocId = null; touch(s); }
+  // Clear any pairings that pointed at a switch in this deleted gang (no dangling refs).
+  for (const fl of getAllFloors()) for (const s of (state.switches[fl.id] || [])) for (const sw of s.switches) if (sw.pairedId != null && removedIds.has(String(sw.pairedId))) { sw.pairedId = null; touch(s); }
   if (state.selectedSwitchId === id) state.selectedSwitchId = null;
   closePanelOnMobile();
   renderSwitches();
@@ -3391,33 +3445,34 @@ function renderSwitches() {
   const svg = document.getElementById('switch-link-layer');
   if (!layer || !svg) return;
   const list = currentSwitches();
-  // Connector lines between paired locations (same floor only — cross-floor pairs still record in data/CSV).
+  // Connector lines between paired switches (same floor only — cross-floor pairs still record in data/CSV).
   svg.setAttribute('width', f.w); svg.setAttribute('height', f.h); svg.setAttribute('viewBox', `0 0 ${f.w} ${f.h}`);
-  const byId = {}; list.forEach(s => byId[s.id] = s);
+  const gangOf = {}; list.forEach(g => g.switches.forEach(sw => { gangOf[String(sw.id)] = g; }));
   let lines = ''; const drawn = new Set();
-  list.forEach(s => {
-    const x1 = f.offsetX + s.x * f.pxPerFt, y1 = f.offsetY + s.y * f.pxPerFt;
-    s.switches.forEach(sw => {
-      if (sw.pairedLocId == null || !byId[sw.pairedLocId]) return;
-      const key = [String(s.id), String(sw.pairedLocId)].sort().join('|'); // one line per pair (reciprocal links)
+  list.forEach(g => {
+    const x1 = f.offsetX + g.x * f.pxPerFt, y1 = f.offsetY + g.y * f.pxPerFt;
+    g.switches.forEach(sw => {
+      if (sw.pairedId == null) return;
+      const tg = gangOf[String(sw.pairedId)];
+      if (!tg || tg === g) return;                 // partner on another floor (or same gang) → no line
+      const key = [String(sw.id), String(sw.pairedId)].sort().join('|'); // one line per switch-pair
       if (drawn.has(key)) return;
       drawn.add(key);
-      const t = byId[sw.pairedLocId];
-      const x2 = f.offsetX + t.x * f.pxPerFt, y2 = f.offsetY + t.y * f.pxPerFt;
+      const x2 = f.offsetX + tg.x * f.pxPerFt, y2 = f.offsetY + tg.y * f.pxPerFt;
       lines += `<line class="si-link" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
     });
   });
   svg.innerHTML = lines;
-  // Pins (show gang size).
+  // Pins (show the gang letter A, B, C…).
   layer.innerHTML = '';
-  list.forEach(s => {
+  list.forEach((g, gi) => {
     const pin = document.createElement('div');
-    pin.className = 'sw-pin' + (s.id === state.selectedSwitchId ? ' sel' : '');
-    pin.dataset.id = s.id;
-    pin.style.left = (f.offsetX + s.x * f.pxPerFt) + 'px';
-    pin.style.top  = (f.offsetY + s.y * f.pxPerFt) + 'px';
-    pin.textContent = s.switches.length;
-    pin.title = s.label + ' · ' + s.switches.length + '-gang';
+    pin.className = 'sw-pin' + (g.id === state.selectedSwitchId ? ' sel' : '');
+    pin.dataset.id = g.id;
+    pin.style.left = (f.offsetX + g.x * f.pxPerFt) + 'px';
+    pin.style.top  = (f.offsetY + g.y * f.pxPerFt) + 'px';
+    pin.textContent = gangLetter(gi);
+    pin.title = 'Gang ' + gangLetter(gi) + (g.label ? ' · ' + g.label : '') + ' · ' + g.switches.length + '-gang';
     layer.appendChild(pin);
   });
 }
@@ -3428,12 +3483,22 @@ function renderSwitchInspector(container, force) {
   container.style.display = '';
   if (!force && container.dataset.sid === String(loc.id) && container.childElementCount) return;
   container.dataset.sid = String(loc.id);
-  const idx = currentSwitches().indexOf(loc) + 1;
-  const others = allSwitchLocations().filter(o => String(o.id) !== String(loc.id));
-  const rows = loc.switches.map((sw, i) => `
+  const letter = gangLetter(currentSwitches().indexOf(loc));
+  // Every switch in every OTHER gang (across floors) is a possible 3-way partner.
+  const units = [];
+  for (const fl of getAllFloors()) {
+    (state.switches[fl.id] || []).forEach((g, ggi) => {
+      if (String(g.id) === String(loc.id)) return;          // can't pair within the same gang
+      g.switches.forEach((sw, si) => units.push({ id: sw.id, ref: gangLetter(ggi) + (si + 1), label: g.label, control: sw.control, floor: fl.name || fl.id }));
+    });
+  }
+  const rows = loc.switches.map((sw, i) => {
+    const ref = letter + (i + 1);
+    const partner = sw.pairedId != null ? switchDescById(sw.pairedId) : null;
+    return `
     <div class="si-row">
       <div class="si-row-top">
-        <span class="si-n">${i + 1}</span>
+        <span class="si-n">${ref}</span>
         <input data-sf="control" data-i="${i}" value="${winEscAttr(sw.control)}" placeholder="what it controls (e.g. ceiling)">
         <button class="si-row-rm" data-rm="${i}" title="Remove this switch">✕</button>
       </div>
@@ -3442,29 +3507,31 @@ function renderSwitchInspector(container, force) {
         <button data-v="dimmer" class="${sw.type === 'dimmer' ? 'on' : ''}">Dimmer</button>
       </div>
       <select class="si-pairsel" data-pair="${i}">
-        <option value="">— not paired (single-location) —</option>
-        ${others.map(o => `<option value="${o.id}" ${String(sw.pairedLocId) === String(o.id) ? 'selected' : ''}>↔ paired with ${winEscHtml(o.label)} (${winEscHtml(String(o.floor))})</option>`).join('')}
+        <option value="">— ${winEscHtml(ref)}: single switch (not paired) —</option>
+        ${units.map(u => `<option value="${u.id}" ${String(sw.pairedId) === String(u.id) ? 'selected' : ''}>↔ ${winEscHtml(u.ref)}${u.control ? ' — ' + winEscHtml(u.control) : ''} · ${winEscHtml(u.label)} (${winEscHtml(String(u.floor))})</option>`).join('')}
       </select>
-    </div>`).join('');
+      ${partner ? `<div class="si-pairnote">↔ ${winEscHtml(ref)} ↔ ${winEscHtml(partner)}</div>` : ''}
+    </div>`;
+  }).join('');
   container.innerHTML = `
     <div class="wi-head">
-      <span class="wi-badge switch">${idx}</span>
+      <span class="wi-badge switch">${letter}</span>
       <input class="wi-label" data-sf="label" value="${winEscAttr(loc.label)}" placeholder="Location (e.g. Kitchen entry)">
-      <button class="wi-del" data-act="remove" title="Remove location">✕</button>
+      <button class="wi-del" data-act="remove" title="Remove gang">✕</button>
     </div>
     <div class="wi-field">
-      <label>${loc.switches.length}-gang — switches at this location</label>
+      <label>Gang ${letter} · ${loc.switches.length} switch${loc.switches.length !== 1 ? 'es' : ''}</label>
       <div class="si-rows">${rows}</div>
-      <button class="si-add" data-act="add">+ Add a switch to this gang</button>
+      <button class="si-add" data-act="add">+ Add a switch to Gang ${letter}</button>
     </div>
     <div class="wi-field"><button class="wi-btn" data-act="csv">⤓ Export switch schedule (CSV)</button></div>
     <details class="wi-howto">
       <summary>Notes</summary>
       <ul>
-        <li>One pin = one box/location. Add a row per switch in the gang.</li>
-        <li><b>Dimmer / Normal</b> per switch.</li>
-        <li><b>Paired</b> = 3-way/4-way: the same light controlled from another location. A dashed line links the two pins.</li>
-        <li>Pair from either end — pick the other location in the dropdown.</li>
+        <li>Each pin is a <b>gang</b> (one box), lettered <b>A, B, C…</b> on the plan.</li>
+        <li>Switches in a gang are numbered <b>${letter}1, ${letter}2…</b> top to bottom.</li>
+        <li><b>Normal / Dimmer</b> per switch.</li>
+        <li><b>3-way:</b> in a switch's pair menu pick the exact partner (e.g. <b>B1</b>). A dashed line links the two pins and both ends show the link.</li>
       </ul>
     </details>`;
   wireSwitchInspector(container, loc);
@@ -3486,38 +3553,41 @@ function wireSwitchInspector(container, loc) {
       touch(loc); renderSwitchInspector(container, true); scheduleSave();
     });
   });
-  // paired-with dropdown
+  // pair-with-a-specific-switch dropdown
   container.querySelectorAll('[data-pair]').forEach(sel => {
     sel.addEventListener('change', () => {
       const val = sel.value ? (isNaN(+sel.value) ? sel.value : +sel.value) : null;
-      setSwitchPair(loc, +sel.dataset.pair, val);
+      setSwitchPair(loc, loc.switches[+sel.dataset.pair], val);
       renderSwitches(); renderSwitchInspector(container, true); scheduleSave();
     });
   });
-  // remove a switch from the gang (last one removes the whole location)
+  // remove a switch from the gang (last one removes the whole gang)
   container.querySelectorAll('[data-rm]').forEach(btn => {
     btn.addEventListener('click', () => {
       const i = +btn.getAttribute('data-rm');
-      if (loc.switches.length <= 1) { if (confirm(`Remove location "${loc.label}"?`)) deleteSwitch(loc.id); return; }
+      if (loc.switches.length <= 1) { if (confirm(`Remove gang "${loc.label}"?`)) deleteSwitch(loc.id); return; }
+      const gone = loc.switches[i];
+      if (gone && gone.pairedId != null) { const p = findSwitchById(gone.pairedId); if (p) { p.sw.pairedId = null; touch(p.gang); } }
       loc.switches.splice(i, 1); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave();
     });
   });
   const add = container.querySelector('[data-act="add"]');
-  if (add) add.addEventListener('click', () => { loc.switches.push({ control: '', type: 'normal', pairedLocId: null }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
+  if (add) add.addEventListener('click', () => { loc.switches.push({ id: genId(), control: '', type: 'normal', pairedId: null }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
   const rm = container.querySelector('[data-act="remove"]');
-  if (rm) rm.addEventListener('click', () => { if (confirm(`Remove location "${loc.label}" and its ${loc.switches.length} switch(es)?`)) deleteSwitch(loc.id); });
+  if (rm) rm.addEventListener('click', () => { if (confirm(`Remove gang "${loc.label}" and its ${loc.switches.length} switch(es)?`)) deleteSwitch(loc.id); });
   const csv = container.querySelector('[data-act="csv"]');
   if (csv) csv.addEventListener('click', exportSwitchesCsv);
 }
 
 function exportSwitchesCsv() {
-  const rows = [['Floor', 'Location', 'Gang', 'Switch#', 'Controls', 'Type', 'PairedWith']];
+  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'PairedWith']];
   for (const f of getAllFloors()) {
-    for (const s of (state.switches[f.id] || [])) {
+    (state.switches[f.id] || []).forEach((s, gi) => {
+      const letter = gangLetter(gi);
       s.switches.forEach((sw, i) => {
-        rows.push([f.name || f.id, s.label, s.switches.length, i + 1, sw.control || '', sw.type, sw.pairedLocId != null ? (switchLocName(sw.pairedLocId) || '(missing)') : '']);
+        rows.push([f.name || f.id, letter, s.label, letter + (i + 1), sw.control || '', sw.type, sw.pairedId != null ? (switchDescById(sw.pairedId) || '(missing)') : '']);
       });
-    }
+    });
   }
   if (rows.length === 1) { alert('No switches added yet. Turn on the 💡 Switches tool and click the plan to drop one.'); return; }
   const csv = rows.map(r => r.map(c => { c = String(c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',')).join('\n');
@@ -3632,12 +3702,13 @@ function renderSummary() {
       html += `<div class="sum-floor">${winEscHtml(String(f.name || f.id))}</div>`;
       list.forEach((s, i) => {
         total++;
+        const letter = gangLetter(i);
         const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
-        const paired = s.switches.filter(x => x.pairedLocId != null).length;
+        const paired = s.switches.filter(x => x.pairedId != null).length;
         const meta = `${s.switches.length}-gang${dimmers ? ` · ${dimmers} dimmer${dimmers !== 1 ? 's' : ''}` : ''}${paired ? ` · ${paired} paired` : ''}`;
-        const rows = s.switches.map((sw, j) => `<div class="sum-kv"><b>#${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${sw.type}${sw.pairedLocId != null ? ` · ↔ paired with ${winEscHtml(switchLocName(sw.pairedLocId) || '(missing)')}` : ''}</span></div>`).join('');
+        const rows = s.switches.map((sw, j) => `<div class="sum-kv"><b>${letter}${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${sw.type}${sw.pairedId != null ? ` · ↔ ${winEscHtml(switchDescById(sw.pairedId))}` : ''}</span></div>`).join('');
         html += `<details class="sum-item">
-          <summary><span class="sum-num sw">${i + 1}</span><span class="sum-label">${winEscHtml(s.label)}</span><span class="sum-meta">${meta}</span></summary>
+          <summary><span class="sum-num sw">${letter}</span><span class="sum-label">${winEscHtml(s.label)}</span><span class="sum-meta">${meta}</span></summary>
           <div class="sum-detail">${rows}<button class="sum-locate" data-kind="switch" data-floor="${f.id}" data-id="${s.id}">Locate on plan ↗</button></div>
         </details>`;
       });
