@@ -832,6 +832,7 @@
   #floor-select-btn { display: none; }
   .floor-menu[hidden] { display: none; }
   #undo-btn, #summary-open-btn { display: inline-flex; align-items: center; gap: 5px; }
+  .right-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
   @media (max-width: 768px) {
     /* ---- slim top bar: floor tabs + a few actions ---- */
     header {
@@ -844,16 +845,20 @@
     .controls { gap: 4px; flex-wrap: nowrap; flex: 0 0 auto; }
     .controls button { padding: 6px 9px; font-size: 15px; }
     #add-custom-btn, .controls label.toggle, #measure-toggle, #room-label-add-btn,
-    #zoom-out, #zoom-in, #zoom-level, #clear-floor, #sync-btn-status { display: none; }
-    .header-spacer { display: none; }
+    #zoom-out, #zoom-in, #zoom-level, #sync-btn-status { display: none; }
     header { position: relative; }
     /* Floor tabs collapse to a compact dropdown on phones. */
     #floor-tabs { display: none; }
     #floor-select-btn {
       display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; white-space: nowrap;
       background: var(--paper); border: 1px solid var(--border); color: var(--ink);
-      padding: 8px 13px; font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer;
+      padding: 7px 10px; font-size: 13px; font-weight: 600; border-radius: 10px; cursor: pointer;
     }
+    /* Right group (Summary + Sync) is text-only on phones; tighten everything to fit one row. */
+    .ra-ic { display: none; }
+    #undo-btn, #clear-floor, #layers-btn, #zoom-fit { padding: 6px 8px !important; }
+    .right-actions button { padding: 6px 11px !important; font-size: 13px; }
+    .right-actions { gap: 5px; }
     .floor-menu {
       position: absolute; top: calc(100% + 6px); left: calc(8px + env(safe-area-inset-left)); z-index: 70;
       background: var(--paper); border: 1px solid var(--border); border-radius: 14px;
@@ -867,7 +872,7 @@
     .floor-menu-item.add { color: var(--accent); margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; }
     /* Action buttons go icon-only to declutter. */
     .controls .blb { display: none; }
-    .controls .bic, #sync-btn-icon, #zoom-fit { font-size: 17px; }
+    .controls .bic, #zoom-fit { font-size: 17px; }
 
     /* ---- bottom tab bar = the three views ---- */
     .view-tabs {
@@ -958,12 +963,11 @@
     <label class="toggle">
       <input type="checkbox" id="labels-toggle" checked> Labels
     </label>
-    <button id="undo-btn" title="Undo (Cmd+Z)" disabled style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">↶</span><span class="blb">Undo</span></button>
+    <button id="undo-btn" title="Undo (Cmd+Z)" disabled style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">↺</span><span class="blb">Undo</span></button>
     <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
     <button id="room-label-add-btn" title="Add room label (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🏷 Label</button>
     <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟 Windows</button>
     <button id="switch-add-btn" title="Add light switch / gang (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">💡 Switches</button>
-    <button id="summary-open-btn" title="Window &amp; switch schedule" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">📋</span><span class="blb">Summary</span></button>
     <div class="layers-wrap" id="layers-wrap">
       <button id="layers-btn" type="button" title="Show / hide layers" aria-haspopup="true" aria-expanded="false" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">👁</span><span class="blb">Layers</span></button>
       <div class="layers-menu" id="layers-menu" hidden>
@@ -972,14 +976,18 @@
         <button class="layers-item" type="button" data-layer="switches"><span class="li-ic">💡</span><span class="li-tx">Switches</span><span class="li-check">✓</span></button>
       </div>
     </div>
+    <button id="clear-floor" title="Clear this floor's items" style="background:transparent;border:1px solid var(--border);color:var(--danger);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">🗑</span><span class="blb" id="clear-label">Clear floor</span></button>
   </div>
 
   <div class="header-spacer"></div>
-  <button id="sync-open-btn" title="Cloud sync" style="background:transparent;border:1px solid var(--border);color:var(--ink-soft);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;">
-    <span id="sync-btn-icon">↻</span>
-    <span id="sync-btn-status" style="font-size:11px;color:var(--ink-faint);"></span>
-  </button>
-  <button id="clear-floor" style="background:transparent;border:1px solid var(--border);color:var(--danger);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">Clear floor</button>
+  <div class="right-actions">
+    <button id="summary-open-btn" title="Window &amp; switch schedule" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">📋</span><span>Summary</span></button>
+    <button id="sync-open-btn" title="Cloud sync" style="background:transparent;border:1px solid var(--border);color:var(--ink-soft);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;">
+      <span class="ra-ic" id="sync-btn-icon">↻</span>
+      <span>Sync</span>
+      <span id="sync-btn-status" style="font-size:11px;color:var(--ink-faint);"></span>
+    </button>
+  </div>
 </header>
 
 <main>
@@ -1571,6 +1579,7 @@ function undo() {
   state.selectedSwitchId = null;
   skipNextHistory = true;                 // don't re-push on the save below
   renderFloor();
+  closePanelOnMobile();
   scheduleSave();
   updateUndoButton();
 }
@@ -2797,6 +2806,9 @@ let pinchStart = null;
     if (activePointers.size < 2) pinchStart = null;
     if (!wasTap) { if (t && e.pointerId === t.id) tap = null; return; }
     tap = null;
+    // If a popover (floor / layers menu) is open, this tap just dismisses it — no placement.
+    const openMenu = document.querySelector('#floor-menu:not([hidden]), #layers-menu:not([hidden])');
+    if (openMenu) { openMenu.hidden = true; return; }
     const rect = els.canvas.getBoundingClientRect();
     // If a properties inspector is open, a tap "clicks out" — close it instead of
     // adding anything. Only a tap with nothing selected drops a new pin.
@@ -3668,8 +3680,8 @@ function applyView(v, skipSave) {
   document.body.classList.remove('view-furniture', 'view-windows', 'view-switches');
   document.body.classList.add('view-' + v);
   // Relabel the Clear button so it's obvious it only clears the active layer.
-  const clearBtn = document.getElementById('clear-floor');
-  if (clearBtn) clearBtn.textContent = 'Clear ' + (v === 'windows' ? 'windows' : v === 'switches' ? 'switches' : 'furniture');
+  const clearLabel = document.getElementById('clear-label');
+  if (clearLabel) clearLabel.textContent = 'Clear ' + (v === 'windows' ? 'windows' : v === 'switches' ? 'switches' : 'furniture');
   // The view drives placement mode for its layer.
   state.windowMode = (v === 'windows');
   state.switchMode = (v === 'switches');
@@ -3701,7 +3713,8 @@ function renderFloorSelect() {
   const menu = document.getElementById('floor-menu');
   if (!label || !menu) return;
   const cur = getFloor(state.currentFloor);
-  label.textContent = cur.name || ('Floor ' + state.currentFloor);
+  const nm = cur.name || ('Floor ' + state.currentFloor);
+  label.textContent = nm.replace(/\s*floor$/i, '').trim() || nm; // compact ("2nd Floor" -> "2nd"); menu shows full names
   menu.innerHTML = '';
   for (const fl of getAllFloors()) {
     const item = document.createElement('button');
