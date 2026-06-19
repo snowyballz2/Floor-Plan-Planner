@@ -348,7 +348,7 @@
   }
   .sw-pin.sel { outline: 3px solid #a78bfa; outline-offset: 2px; z-index: 9; }
   .sw-pin:active { cursor: grabbing; }
-  .si-link { stroke: #6d28d9; stroke-width: 2; stroke-dasharray: 5 4; fill: none; opacity: 0.75; }
+  .si-link { stroke: #6d28d9; stroke-width: 2.5; stroke-dasharray: 5 4; fill: none; opacity: 0.85; stroke-linecap: round; }
   .si-rows { display: flex; flex-direction: column; gap: 8px; }
   .si-row { border: 1px solid var(--border); border-radius: 7px; padding: 8px; background: var(--paper-dim); }
   .si-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
@@ -357,7 +357,11 @@
   .si-row-rm { border: none; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
   .si-row-rm:hover { color: var(--danger); }
   .si-pairsel { width: 100%; font: inherit; font-size: 12px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); margin-top: 6px; }
-  .si-pairnote { margin-top: 5px; font-size: 11px; font-weight: 600; color: #6d28d9; display: flex; align-items: center; gap: 4px; }
+  .si-circuit { margin-top: 6px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--cc, #6d28d9); }
+  .si-cdot { width: 9px; height: 9px; border-radius: 50%; background: var(--cc, #6d28d9); flex: 0 0 auto; box-shadow: 0 0 0 2px color-mix(in srgb, var(--cc, #6d28d9) 22%, transparent); }
+  .si-ctext { flex: 1; min-width: 0; }
+  .si-unpair { border: 1px solid color-mix(in srgb, var(--cc, #6d28d9) 45%, transparent); background: transparent; color: var(--cc, #6d28d9); cursor: pointer; font: inherit; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; }
+  .si-unpair:hover { background: color-mix(in srgb, var(--cc, #6d28d9) 12%, transparent); }
   .si-add { width: 100%; font: inherit; font-size: 12.5px; padding: 7px; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--ink-soft); cursor: pointer; margin-top: 8px; }
   .si-add:hover { border-color: #6d28d9; color: #6d28d9; }
   .wi-badge.switch { background: #6d28d9; }
@@ -3321,8 +3325,9 @@ let winDrag = null;
 // SWITCHES (light-switch locations / gangs)
 // ============================================================
 // A per-floor layer of switch-location pins. Each location holds a gang of
-// 1..N switches; each switch is normal/dimmer and may be paired (3-way/4-way)
-// with another location. Same lifecycle as windows: save/load/undo/sync.
+// 1..N switches; each switch is normal/dimmer and may join a circuit (3-way,
+// 4-way, …) with any number of other switches that control the same light.
+// Same lifecycle as windows: save/load/undo/sync.
 const SWITCH_TYPES = ['normal', 'dimmer'];
 
 function currentSwitches() { return state.switches[state.currentFloor] || []; }
@@ -3353,47 +3358,70 @@ function switchRefById(id) {                       // "A2"
   const h = findSwitchById(id);
   return h ? gangLetter(h.gangIdx) + (h.swIdx + 1) : null;
 }
-function switchDescById(id) {                       // "A2 — ceiling · 2nd Floor"
-  const h = findSwitchById(id);
-  if (!h) return '(missing)';
-  return gangLetter(h.gangIdx) + (h.swIdx + 1) + (h.sw.control ? ' — ' + h.sw.control : '') + ' · ' + (h.floor.name || h.floor.id);
+// ---- Circuits: a set of switches that all control the same light (3-way, 4-way,
+// …). Membership is a shared `circuit` id on each switch (null = unpaired). Every
+// circuit gets its own colour; all strands belonging to one circuit match colour.
+const CIRCUIT_COLORS = ['#6d28d9', '#dc2626', '#2563eb', '#059669', '#d97706', '#db2777', '#0891b2', '#65a30d', '#9333ea', '#b91c1c', '#0d9488', '#ca8a04'];
+function allCircuitIds() {
+  const set = new Set();
+  for (const f of getAllFloors()) for (const g of (state.switches[f.id] || [])) for (const sw of g.switches) if (sw.circuit != null) set.add(String(sw.circuit));
+  return [...set].sort();
 }
-
-// Pairing is reciprocal and strictly 1:1 — linking A1↔B2 unlinks whatever A1 or B2
-// were paired to before, so each end always shows a single, specific partner.
-function setSwitchPair(srcGang, srcSw, targetId) {
-  if (srcSw.pairedId != null && String(srcSw.pairedId) !== String(targetId)) {
-    const prev = findSwitchById(srcSw.pairedId);
-    if (prev) { prev.sw.pairedId = null; touch(prev.gang); }
-  }
-  if (targetId == null) { srcSw.pairedId = null; touch(srcGang); return; }
-  const tgt = findSwitchById(targetId);
-  if (!tgt) { srcSw.pairedId = null; touch(srcGang); return; }
-  if (tgt.sw.pairedId != null && String(tgt.sw.pairedId) !== String(srcSw.id)) {
-    const tprev = findSwitchById(tgt.sw.pairedId);
-    if (tprev) { tprev.sw.pairedId = null; touch(tprev.gang); }
-  }
-  srcSw.pairedId = targetId;
-  tgt.sw.pairedId = srcSw.id;
-  touch(srcGang); touch(tgt.gang);
+// Map circuitId → colour (distinct while there are ≤ palette-size circuits).
+function circuitColorMap() {
+  const map = {};
+  allCircuitIds().forEach((id, i) => { map[id] = CIRCUIT_COLORS[i % CIRCUIT_COLORS.length]; });
+  return map;
+}
+function circuitColor(id, map) { if (id == null) return null; return (map || circuitColorMap())[String(id)] || CIRCUIT_COLORS[0]; }
+// Every switch in a circuit, across floors → [{sw, gang, floor, ref}] in display order.
+function circuitMembers(circuitId) {
+  const out = [];
+  if (circuitId == null) return out;
+  for (const f of getAllFloors()) (state.switches[f.id] || []).forEach((g, gi) => {
+    g.switches.forEach((sw, si) => { if (String(sw.circuit) === String(circuitId)) out.push({ sw, gang: g, floor: f, ref: gangLetter(gi) + (si + 1) }); });
+  });
+  return out;
+}
+function touchSwitchGang(sw) { const h = findSwitchById(sw.id); if (h) touch(h.gang); }
+// Merge `sw` (and anyone already in its circuit) into `targetSw`'s circuit, so they
+// all control the same light. Creates a circuit on the target if it has none yet.
+function joinCircuit(sw, targetSw) {
+  if (!targetSw || String(targetSw.id) === String(sw.id)) return;
+  let cid = targetSw.circuit;
+  if (cid == null) { cid = genId(); targetSw.circuit = cid; touchSwitchGang(targetSw); }
+  if (String(sw.circuit) === String(cid)) return;            // already together
+  if (sw.circuit != null) circuitMembers(sw.circuit).forEach(m => { m.sw.circuit = cid; touch(m.gang); });
+  else { sw.circuit = cid; touchSwitchGang(sw); }
+}
+// Remove one switch from its circuit; if that leaves a lone switch behind it's no
+// longer a pair, so dissolve it too.
+function leaveCircuit(sw) { const cid = sw.circuit; sw.circuit = null; touchSwitchGang(sw); dissolveIfLonely(cid); }
+function dissolveIfLonely(cid) {
+  if (cid == null) return;
+  const m = circuitMembers(cid);
+  if (m.length === 1) { m[0].sw.circuit = null; touch(m[0].gang); }
 }
 
 // Normalize the switch data: give every gang/switch the fields the current model
-// needs, then convert any legacy gang-level pairing into switch↔switch links.
+// needs, then convert any legacy pairing (gang-level → switch↔switch → circuit) into
+// circuit membership, and drop any circuit left with a single member.
 function normalizeSwitches() {
   for (const sf of ['1', '2', '3', '4']) {
     if (!state.switches[sf]) state.switches[sf] = [];
     if (!state.deletedSwitches[sf]) state.deletedSwitches[sf] = {};
     for (const s of state.switches[sf]) {
       if (s._ts == null) s._ts = 0;
-      if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', pairedId: null }];
+      if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', circuit: null }];
       for (const sw of s.switches) {
         if (sw.id == null) sw.id = genId();
-        if (sw.pairedId === undefined && sw.pairedLocId === undefined) sw.pairedId = null;
+        if (sw.circuit === undefined) sw.circuit = null;
       }
     }
   }
-  migrateSwitchPairing();
+  migrateSwitchPairing();   // legacy: pairedLocId → pairedId
+  migrateSwitchCircuits();  // legacy: pairedId → circuit
+  cleanupLonelyCircuits();
 }
 function migrateSwitchPairing() {
   const gangs = [];
@@ -3416,6 +3444,28 @@ function migrateSwitchPairing() {
   }
   for (const g of gangs) for (const sw of g.switches) delete sw.pairedLocId;
 }
+// Convert the previous strict switch↔switch `pairedId` into shared circuit ids.
+function migrateSwitchCircuits() {
+  const all = [];
+  for (const f of getAllFloors()) for (const g of (state.switches[f.id] || [])) for (const sw of g.switches) all.push(sw);
+  if (!all.some(sw => sw.pairedId !== undefined)) return;     // nothing legacy to convert
+  const byId = {}; all.forEach(sw => byId[String(sw.id)] = sw);
+  for (const sw of all) {
+    if (sw.circuit == null && sw.pairedId != null) {
+      const partner = byId[String(sw.pairedId)];
+      if (partner) { const cid = partner.circuit != null ? partner.circuit : genId(); sw.circuit = cid; partner.circuit = cid; }
+    }
+  }
+  all.forEach(sw => { delete sw.pairedId; });
+}
+// Drop any circuit with fewer than 2 switches (a circuit of one is just unpaired).
+function cleanupLonelyCircuits() {
+  const counts = {}; const all = [];
+  for (const f of getAllFloors()) for (const g of (state.switches[f.id] || [])) for (const sw of g.switches) {
+    all.push(sw); if (sw.circuit != null) counts[String(sw.circuit)] = (counts[String(sw.circuit)] || 0) + 1;
+  }
+  for (const sw of all) if (sw.circuit != null && counts[String(sw.circuit)] < 2) sw.circuit = null;
+}
 
 function newSwitch(x, y) {
   const f = getFloor(state.currentFloor);
@@ -3424,7 +3474,7 @@ function newSwitch(x, y) {
   return {
     id: genId(), x, y,
     label: base + '-S' + n,
-    switches: [{ id: genId(), control: '', type: 'normal', pairedId: null }],
+    switches: [{ id: genId(), control: '', type: 'normal', circuit: null }],
     _ts: Date.now(),
   };
 }
@@ -3447,11 +3497,11 @@ function deleteSwitch(id) {
   if (!items) return;
   const idx = items.findIndex(s => s.id === id);
   if (idx < 0) return;
-  const removedIds = new Set((items[idx].switches || []).map(sw => String(sw.id)));
+  const circuits = [...new Set((items[idx].switches || []).map(sw => sw.circuit).filter(c => c != null).map(String))];
   items.splice(idx, 1);
   tombstoneSwitch(state.currentFloor, id);
-  // Clear any pairings that pointed at a switch in this deleted gang (no dangling refs).
-  for (const fl of getAllFloors()) for (const s of (state.switches[fl.id] || [])) for (const sw of s.switches) if (sw.pairedId != null && removedIds.has(String(sw.pairedId))) { sw.pairedId = null; touch(s); }
+  // Any circuit that drops to a single switch is no longer a pair — dissolve it.
+  circuits.forEach(dissolveIfLonely);
   if (state.selectedSwitchId === id) state.selectedSwitchId = null;
   closePanelOnMobile();
   renderSwitches();
@@ -3465,22 +3515,31 @@ function renderSwitches() {
   const svg = document.getElementById('switch-link-layer');
   if (!layer || !svg) return;
   const list = currentSwitches();
-  // Connector lines between paired switches (same floor only — cross-floor pairs still record in data/CSV).
+  // One coloured strand-path per circuit (same floor only — cross-floor members
+  // still record in data/CSV). All segments of a circuit share its colour; each
+  // circuit gets a distinct colour, so a gang in two circuits shows two colours.
   svg.setAttribute('width', f.w); svg.setAttribute('height', f.h); svg.setAttribute('viewBox', `0 0 ${f.w} ${f.h}`);
-  const gangOf = {}; list.forEach(g => g.switches.forEach(sw => { gangOf[String(sw.id)] = g; }));
-  let lines = ''; const drawn = new Set();
+  const colorMap = circuitColorMap();
+  const pinsByCircuit = {};                          // circuitId → distinct gangs on this floor, in display order
   list.forEach(g => {
-    const x1 = f.offsetX + g.x * f.pxPerFt, y1 = f.offsetY + g.y * f.pxPerFt;
+    const seen = new Set();
     g.switches.forEach(sw => {
-      if (sw.pairedId == null) return;
-      const tg = gangOf[String(sw.pairedId)];
-      if (!tg || tg === g) return;                 // partner on another floor (or same gang) → no line
-      const key = [String(sw.id), String(sw.pairedId)].sort().join('|'); // one line per switch-pair
-      if (drawn.has(key)) return;
-      drawn.add(key);
-      const x2 = f.offsetX + tg.x * f.pxPerFt, y2 = f.offsetY + tg.y * f.pxPerFt;
-      lines += `<line class="si-link" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
+      if (sw.circuit == null || seen.has(String(sw.circuit))) return;
+      seen.add(String(sw.circuit));
+      (pinsByCircuit[String(sw.circuit)] = pinsByCircuit[String(sw.circuit)] || []).push(g);
     });
+  });
+  let lines = '';
+  Object.keys(pinsByCircuit).forEach(cid => {
+    const gangs = pinsByCircuit[cid];
+    if (gangs.length < 2) return;                    // need ≥2 pins on this floor to draw a strand
+    const color = colorMap[cid] || CIRCUIT_COLORS[0];
+    for (let i = 0; i < gangs.length - 1; i++) {
+      const a = gangs[i], b = gangs[i + 1];
+      const x1 = f.offsetX + a.x * f.pxPerFt, y1 = f.offsetY + a.y * f.pxPerFt;
+      const x2 = f.offsetX + b.x * f.pxPerFt, y2 = f.offsetY + b.y * f.pxPerFt;
+      lines += `<line class="si-link" style="stroke:${color}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
+    }
   });
   svg.innerHTML = lines;
   // Pins (show the gang letter A, B, C…).
@@ -3504,17 +3563,22 @@ function renderSwitchInspector(container, force) {
   if (!force && container.dataset.sid === String(loc.id) && container.childElementCount) return;
   container.dataset.sid = String(loc.id);
   const letter = gangLetter(currentSwitches().indexOf(loc));
-  // Every switch in every OTHER gang (across floors) is a possible 3-way partner.
+  const colorMap = circuitColorMap();
+  // Every switch in every OTHER gang (across floors) is a possible circuit partner.
   const units = [];
   for (const fl of getAllFloors()) {
     (state.switches[fl.id] || []).forEach((g, ggi) => {
       if (String(g.id) === String(loc.id)) return;          // can't pair within the same gang
-      g.switches.forEach((sw, si) => units.push({ id: sw.id, ref: gangLetter(ggi) + (si + 1), label: g.label, control: sw.control, floor: fl.name || fl.id }));
+      g.switches.forEach((sw, si) => units.push({ id: sw.id, ref: gangLetter(ggi) + (si + 1), label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }));
     });
   }
   const rows = loc.switches.map((sw, i) => {
     const ref = letter + (i + 1);
-    const partner = sw.pairedId != null ? switchDescById(sw.pairedId) : null;
+    const cid = sw.circuit;
+    const members = cid != null ? circuitMembers(cid) : [];
+    const color = cid != null ? (colorMap[String(cid)] || CIRCUIT_COLORS[0]) : null;
+    // Pair targets: any switch not already in THIS switch's circuit.
+    const opts = units.filter(u => cid == null || String(u.circuit) !== String(cid));
     return `
     <div class="si-row">
       <div class="si-row-top">
@@ -3526,11 +3590,15 @@ function renderSwitchInspector(container, force) {
         <button data-v="normal" class="${sw.type !== 'dimmer' ? 'on' : ''}">Normal</button>
         <button data-v="dimmer" class="${sw.type === 'dimmer' ? 'on' : ''}">Dimmer</button>
       </div>
+      ${cid != null ? `<div class="si-circuit" style="--cc:${color}">
+        <span class="si-cdot"></span>
+        <span class="si-ctext">${members.length}-way: ${winEscHtml(members.map(m => m.ref).join(' · '))}</span>
+        <button class="si-unpair" data-unpair="${i}" title="Take ${winEscHtml(ref)} out of this circuit">unpair</button>
+      </div>` : ''}
       <select class="si-pairsel" data-pair="${i}">
-        <option value="">— ${winEscHtml(ref)}: single switch (not paired) —</option>
-        ${units.map(u => `<option value="${u.id}" ${String(sw.pairedId) === String(u.id) ? 'selected' : ''}>↔ ${winEscHtml(u.ref)}${u.control ? ' — ' + winEscHtml(u.control) : ''} · ${winEscHtml(u.label)} (${winEscHtml(String(u.floor))})</option>`).join('')}
+        <option value="">${cid != null ? '＋ add another switch to this circuit…' : '＋ pair ' + winEscHtml(ref) + ' with…'}</option>
+        ${opts.map(u => `<option value="${u.id}">${winEscHtml(u.ref)}${u.control ? ' — ' + winEscHtml(u.control) : ''} · ${winEscHtml(u.label)} (${winEscHtml(String(u.floor))})${u.circuit != null ? ' ●' : ''}</option>`).join('')}
       </select>
-      ${partner ? `<div class="si-pairnote">↔ ${winEscHtml(ref)} ↔ ${winEscHtml(partner)}</div>` : ''}
     </div>`;
   }).join('');
   container.innerHTML = `
@@ -3551,7 +3619,8 @@ function renderSwitchInspector(container, force) {
         <li>Each pin is a <b>gang</b> (one box), lettered <b>A, B, C…</b> on the plan.</li>
         <li>Switches in a gang are numbered <b>${letter}1, ${letter}2…</b> top to bottom.</li>
         <li><b>Normal / Dimmer</b> per switch.</li>
-        <li><b>3-way:</b> in a switch's pair menu pick the exact partner (e.g. <b>B1</b>). A dashed line links the two pins and both ends show the link.</li>
+        <li><b>3-way / 4-way:</b> a switch's <i>pair</i> menu links it to another switch into a <b>circuit</b> (all controlling one light). Add more switches to grow it — each circuit gets its own colour, and every strand of that circuit matches.</li>
+        <li>A gang in two circuits shows two differently-coloured strands. Use <i>unpair</i> to drop a switch from its circuit.</li>
       </ul>
     </details>`;
   wireSwitchInspector(container, loc);
@@ -3573,11 +3642,21 @@ function wireSwitchInspector(container, loc) {
       touch(loc); renderSwitchInspector(container, true); scheduleSave();
     });
   });
-  // pair-with-a-specific-switch dropdown
+  // pair menu: merge this switch into the chosen switch's circuit (it resets to its
+  // placeholder after, so it reads as an action — current membership shows above it).
   container.querySelectorAll('[data-pair]').forEach(sel => {
     sel.addEventListener('change', () => {
-      const val = sel.value ? (isNaN(+sel.value) ? sel.value : +sel.value) : null;
-      setSwitchPair(loc, loc.switches[+sel.dataset.pair], val);
+      if (!sel.value) return;
+      const targetId = isNaN(+sel.value) ? sel.value : +sel.value;
+      const tgt = findSwitchById(targetId);
+      if (tgt) joinCircuit(loc.switches[+sel.dataset.pair], tgt.sw);
+      renderSwitches(); renderSwitchInspector(container, true); scheduleSave();
+    });
+  });
+  // unpair: take this switch out of its circuit
+  container.querySelectorAll('[data-unpair]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      leaveCircuit(loc.switches[+btn.getAttribute('data-unpair')]);
       renderSwitches(); renderSwitchInspector(container, true); scheduleSave();
     });
   });
@@ -3586,13 +3665,14 @@ function wireSwitchInspector(container, loc) {
     btn.addEventListener('click', () => {
       const i = +btn.getAttribute('data-rm');
       if (loc.switches.length <= 1) { if (confirm(`Remove gang "${loc.label}"?`)) deleteSwitch(loc.id); return; }
-      const gone = loc.switches[i];
-      if (gone && gone.pairedId != null) { const p = findSwitchById(gone.pairedId); if (p) { p.sw.pairedId = null; touch(p.gang); } }
-      loc.switches.splice(i, 1); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave();
+      const cid = loc.switches[i] ? loc.switches[i].circuit : null;
+      loc.switches.splice(i, 1); touch(loc);
+      dissolveIfLonely(cid);
+      renderSwitchInspector(container, true); renderSwitches(); scheduleSave();
     });
   });
   const add = container.querySelector('[data-act="add"]');
-  if (add) add.addEventListener('click', () => { loc.switches.push({ id: genId(), control: '', type: 'normal', pairedId: null }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
+  if (add) add.addEventListener('click', () => { loc.switches.push({ id: genId(), control: '', type: 'normal', circuit: null }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
   const rm = container.querySelector('[data-act="remove"]');
   if (rm) rm.addEventListener('click', () => { if (confirm(`Remove gang "${loc.label}" and its ${loc.switches.length} switch(es)?`)) deleteSwitch(loc.id); });
   const csv = container.querySelector('[data-act="csv"]');
@@ -3600,12 +3680,17 @@ function wireSwitchInspector(container, loc) {
 }
 
 function exportSwitchesCsv() {
-  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'PairedWith']];
+  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Circuit']];
   for (const f of getAllFloors()) {
     (state.switches[f.id] || []).forEach((s, gi) => {
       const letter = gangLetter(gi);
       s.switches.forEach((sw, i) => {
-        rows.push([f.name || f.id, letter, s.label, letter + (i + 1), sw.control || '', sw.type, sw.pairedId != null ? (switchDescById(sw.pairedId) || '(missing)') : '']);
+        let circuit = '';
+        if (sw.circuit != null) {
+          const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => m.ref);
+          if (others.length) circuit = (others.length + 1) + '-way with ' + others.join(' + ');
+        }
+        rows.push([f.name || f.id, letter, s.label, letter + (i + 1), sw.control || '', sw.type, circuit]);
       });
     });
   }
@@ -3720,13 +3805,21 @@ function renderSummary() {
       const list = state.switches[f.id] || [];
       if (!list.length) continue;
       html += `<div class="sum-floor">${winEscHtml(String(f.name || f.id))}</div>`;
+      const colorMap = circuitColorMap();
       list.forEach((s, i) => {
         total++;
         const letter = gangLetter(i);
         const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
-        const paired = s.switches.filter(x => x.pairedId != null).length;
+        const paired = s.switches.filter(x => x.circuit != null).length;
         const meta = `${s.switches.length}-gang${dimmers ? ` · ${dimmers} dimmer${dimmers !== 1 ? 's' : ''}` : ''}${paired ? ` · ${paired} paired` : ''}`;
-        const rows = s.switches.map((sw, j) => `<div class="sum-kv"><b>${letter}${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${sw.type}${sw.pairedId != null ? ` · ↔ ${winEscHtml(switchDescById(sw.pairedId))}` : ''}</span></div>`).join('');
+        const rows = s.switches.map((sw, j) => {
+          let circ = '';
+          if (sw.circuit != null) {
+            const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => m.ref);
+            if (others.length) circ = ` · <span style="color:${colorMap[String(sw.circuit)] || CIRCUIT_COLORS[0]}">●</span> ${(others.length + 1)}-way: ${winEscHtml(others.join(' · '))}`;
+          }
+          return `<div class="sum-kv"><b>${letter}${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${sw.type}${circ}</span></div>`;
+        }).join('');
         html += `<details class="sum-item">
           <summary><span class="sum-num sw">${letter}</span><span class="sum-label">${winEscHtml(s.label)}</span><span class="sum-meta">${meta}</span></summary>
           <div class="sum-detail">${rows}<button class="sum-locate" data-kind="switch" data-floor="${f.id}" data-id="${s.id}">Locate on plan ↗</button></div>
