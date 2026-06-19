@@ -361,6 +361,7 @@
     font-family: inherit; user-select: none; touch-action: none; white-space: nowrap;
   }
   .sw-pin.selected { background: #16a34a; }            /* picked for export — green */
+  .sw-pin.hub { width: 24px; min-width: 24px; height: 24px; padding: 0; border-radius: 50%; background: #0891b2; font-size: 14px; }  /* hub = teal circle + ◉ */
   .sw-pin.sel { outline: 3px solid #93c5fd; outline-offset: 2px; z-index: 9; }  /* open in inspector */
   .sw-pin:active { cursor: grabbing; }
   .si-link { stroke: #6d28d9; stroke-width: 2.5; stroke-dasharray: 5 4; fill: none; opacity: 0.85; stroke-linecap: round; }
@@ -388,6 +389,14 @@
   .si-add { width: 100%; font: inherit; font-size: 12.5px; padding: 7px; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--ink-soft); cursor: pointer; margin-top: 8px; }
   .si-add:hover { border-color: #2563eb; color: #2563eb; }
   .wi-badge.switch { background: #2563eb; }
+  .wi-badge.hub { background: #0891b2; }
+  /* Pin kind toggle (Switch gang / Hub). */
+  .si-kind { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .si-kind button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 8px 6px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .si-kind button + button { border-left: 1px solid var(--border); }
+  .si-kind button.on { background: #2563eb; color: #fff; font-weight: 600; }
+  .si-kind button[data-kindv="hub"].on { background: #0891b2; }
+  .si-hubnote { margin: 0; font-size: 12px; color: var(--ink-soft); line-height: 1.5; background: var(--paper-dim); border: 1px solid var(--border); border-radius: 7px; padding: 10px 11px; }
 
   /* ---- Summary modal (windows + switches schedule) ---- */
   .sum-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -432,6 +441,7 @@
   .sum-num { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex: 0 0 auto; }
   .sum-num.win { background: var(--accent); border-radius: 50%; }
   .sum-num.sw { background: #2563eb; border-radius: 4px; }
+  .sum-num.hub { background: #0891b2; border-radius: 50%; }
   .sum-label { font-weight: 600; font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sum-meta { margin-left: auto; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; text-align: right; flex: 0 0 auto; }
   .sum-warn { color: var(--danger); }
@@ -3429,10 +3439,14 @@ let winDrag = null;
 // 1..N switches; each switch is normal/dimmer and may join a circuit (3-way,
 // 4-way, …) with any number of other switches that control the same light.
 // Same lifecycle as windows: save/load/undo/sync.
-const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote', 'hub'];
+const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote'];
 // Primary type is one of normal/dimmer/blank (exactly one). `smart` and `ledStrip`
 // are independent flags that can layer on top of any non-blank type.
-function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : t === 'hub' ? 'Hub' : 'Switch'; }
+function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : 'Switch'; }
+// A pin is either a switch GANG (lettered A,B,C…) or a standalone HUB device (◉).
+function isHubGang(g) { return !!g && g.kind === 'hub'; }
+function floorGangs(floorId) { return (state.switches[floorId] || []).filter(g => !isHubGang(g)); }   // hubs don't take a letter
+function gangLetterOf(floorId, gang) { const i = floorGangs(floorId).indexOf(gang); return i >= 0 ? gangLetter(i) : '?'; }
 function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); if (sw && sw.nightMode) o.push('Night'); return o; }
 
 // ---- Export selection: which individual switches are picked for the export table.
@@ -3446,7 +3460,7 @@ function setSwSelected(id, on) {
   if (on) set.add(String(id)); else set.delete(String(id));
   commitExportSel([...set]);
 }
-function gangSelectableSwitches(g) { return g.switches.filter(sw => sw.type !== 'blank'); }
+function gangSelectableSwitches(g) { return isHubGang(g) ? [] : g.switches.filter(sw => sw.type !== 'blank'); }
 function gangAnySelected(g) { const set = exportSelSet(); return gangSelectableSwitches(g).some(sw => set.has(String(sw.id))); }
 // Toggle a whole gang: any picked → clear them all; otherwise pick all its (non-blank) switches.
 function toggleGangSelection(g) {
@@ -3484,7 +3498,7 @@ function findSwitchById(id) {
 }
 function switchRefById(id) {                       // "A2"
   const h = findSwitchById(id);
-  return h ? gangLetter(h.gangIdx) + (h.swIdx + 1) : null;
+  return h ? gangLetterOf(h.floor.id, h.gang) + (h.swIdx + 1) : null;
 }
 // ---- Circuits: a set of switches that all control the same light (3-way, 4-way,
 // …). Membership is a shared `circuit` id on each switch (null = unpaired). Every
@@ -3506,8 +3520,9 @@ function circuitColor(id, map) { if (id == null) return null; return (map || cir
 function circuitMembers(circuitId) {
   const out = [];
   if (circuitId == null) return out;
-  for (const f of getAllFloors()) (state.switches[f.id] || []).forEach((g, gi) => {
-    g.switches.forEach((sw, si) => { if (String(sw.circuit) === String(circuitId)) out.push({ sw, gang: g, floor: f, ref: gangLetter(gi) + (si + 1) }); });
+  for (const f of getAllFloors()) (state.switches[f.id] || []).forEach((g) => {
+    if (isHubGang(g)) return;                           // hubs aren't part of circuits
+    g.switches.forEach((sw, si) => { if (String(sw.circuit) === String(circuitId)) out.push({ sw, gang: g, floor: f, ref: gangLetterOf(f.id, g) + (si + 1) }); });
   });
   return out;
 }
@@ -3553,14 +3568,17 @@ function normalizeSwitches() {
     for (const s of state.switches[sf]) {
       if (s._ts == null) s._ts = 0;
       if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }];
+      // Migrate the old "hub" switch-type: promote the whole pin to a hub device.
+      if (s.kind !== 'hub' && s.switches.some(sw => sw.type === 'hub')) { s.kind = 'hub'; s.switches.forEach(sw => { if (sw.type === 'hub') sw.type = 'normal'; }); }
       for (const sw of s.switches) {
         if (sw.id == null) sw.id = genId();
         if (sw.circuit === undefined) sw.circuit = null;
-        if (sw.type == null) sw.type = 'normal';            // primary: normal | dimmer | blank | remote
-        if (typeof sw.smart !== 'boolean') sw.smart = false; // independent feature flags
+        if (sw.type == null || sw.type === 'hub') sw.type = 'normal';   // primary: normal | dimmer | blank | remote
+        if (typeof sw.smart !== 'boolean') sw.smart = false;            // independent feature flags
         if (typeof sw.ledStrip !== 'boolean') sw.ledStrip = false;
         if (typeof sw.nightMode !== 'boolean') sw.nightMode = false;
       }
+      if (isHubGang(s)) s.switches.forEach(sw => { sw.circuit = null; });   // a hub is never circuit-paired
     }
   }
   migrateSwitchPairing();   // legacy: pairedLocId → pairedId
@@ -3664,10 +3682,9 @@ function renderSwitches() {
   // circuit gets a distinct colour, so a gang in two circuits shows two colours.
   svg.setAttribute('width', f.w); svg.setAttribute('height', f.h); svg.setAttribute('viewBox', `0 0 ${f.w} ${f.h}`);
   const colorMap = circuitColorMap();
-  const gangIdx = {}; list.forEach((g, i) => { gangIdx[g.id] = i; });
   // The specific switch(es) of gang `g` that belong to circuit `cid` — the strand
   // represents these switches being paired, NOT the gangs themselves.
-  const refsIn = (g, cid) => g.switches.map((sw, si) => (sw.circuit != null && String(sw.circuit) === String(cid)) ? gangLetter(gangIdx[g.id]) + (si + 1) : null).filter(Boolean);
+  const refsIn = (g, cid) => g.switches.map((sw, si) => (sw.circuit != null && String(sw.circuit) === String(cid)) ? gangLetterOf(f.id, g) + (si + 1) : null).filter(Boolean);
   const pinsByCircuit = {};                          // circuitId → distinct gangs on this floor, in display order
   list.forEach(g => {
     const seen = new Set();
@@ -3696,15 +3713,24 @@ function renderSwitches() {
   layer.innerHTML = '';
   const selSet = exportSelSet();
   let stubs = '';
-  list.forEach((g, gi) => {
+  list.forEach((g) => {
     const px = f.offsetX + g.x * f.pxPerFt, py = f.offsetY + g.y * f.pxPerFt;
     const pin = document.createElement('div');
-    const picked = g.switches.some(sw => sw.type !== 'blank' && selSet.has(String(sw.id)));
-    pin.className = 'sw-pin' + (g.id === state.selectedSwitchId ? ' sel' : '') + (picked ? ' selected' : '');
     pin.dataset.id = g.id;
     pin.style.left = px + 'px';
     pin.style.top  = py + 'px';
-    pin.textContent = gangLetter(gi);
+    const editSel = g.id === state.selectedSwitchId ? ' sel' : '';
+    if (isHubGang(g)) {                                 // standalone hub device — distinct ◉ marker, no letter/strands
+      pin.className = 'sw-pin hub' + editSel;
+      pin.textContent = '◉';
+      pin.title = 'Hub' + (g.label ? ' · ' + g.label : '');
+      layer.appendChild(pin);
+      return;
+    }
+    const picked = g.switches.some(sw => sw.type !== 'blank' && selSet.has(String(sw.id)));
+    pin.className = 'sw-pin' + editSel + (picked ? ' selected' : '');
+    const letter = gangLetterOf(f.id, g);
+    pin.textContent = letter;
     const nSel = gangSelectableSwitches(g).filter(sw => selSet.has(String(sw.id))).length;
     // Cross-floor circuit partners (unique by ref) — shown as stub + floor-coded chip.
     const seenX = new Set(); const xlinks = [];
@@ -3718,7 +3744,7 @@ function renderSwitches() {
         xlinks.push({ ref, up: (m.floor.order || 0) > (f.order || 0), color });
       });
     });
-    pin.title = 'Gang ' + gangLetter(gi) + (g.label ? ' · ' + g.label : '') + ' · ' + g.switches.length + '-gang'
+    pin.title = 'Gang ' + letter + (g.label ? ' · ' + g.label : '') + ' · ' + g.switches.length + '-gang'
       + (nSel ? ' · ' + nSel + ' selected' : '') + (xlinks.length ? ' · cross-floor → ' + xlinks.map(x => x.ref).join(', ') : '');
     layer.appendChild(pin);
     xlinks.forEach((xl, k) => {
@@ -3742,15 +3768,16 @@ function renderSwitchInspector(container, force) {
   container.style.display = '';
   if (!force && container.dataset.sid === String(loc.id) && container.childElementCount) return;
   container.dataset.sid = String(loc.id);
-  const letter = gangLetter(currentSwitches().indexOf(loc));
+  const letter = gangLetterOf(state.currentFloor, loc);
+  const isHub = isHubGang(loc);
   const colorMap = circuitColorMap();
-  // Every switch in every OTHER gang (across floors) is a possible circuit partner.
+  // Every switch in every OTHER (non-hub) gang across floors is a possible circuit partner.
   const units = [];
   for (const fl of getAllFloors()) {
-    (state.switches[fl.id] || []).forEach((g, ggi) => {
-      if (String(g.id) === String(loc.id)) return;          // can't pair within the same gang
+    (state.switches[fl.id] || []).forEach((g) => {
+      if (isHubGang(g) || String(g.id) === String(loc.id)) return;   // hubs aren't pairable; can't pair within the same gang
       const cross = String(fl.id) !== String(state.currentFloor);
-      g.switches.forEach((sw, si) => { if (sw.type === 'blank') return; const baseRef = gangLetter(ggi) + (si + 1); units.push({ id: sw.id, ref: cross ? (floorCode(fl) + '·' + baseRef) : baseRef, label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }); });  // a blank can't be a pair target; cross-floor refs are floor-prefixed
+      g.switches.forEach((sw, si) => { if (sw.type === 'blank') return; const baseRef = gangLetterOf(fl.id, g) + (si + 1); units.push({ id: sw.id, ref: cross ? (floorCode(fl) + '·' + baseRef) : baseRef, label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }); });  // cross-floor refs are floor-prefixed
     });
   }
   const rows = loc.switches.map((sw, i) => {
@@ -3772,7 +3799,6 @@ function renderSwitchInspector(container, force) {
         <button data-v="dimmer" class="${sw.type === 'dimmer' ? 'on' : ''}">Dimmer</button>
         <button data-v="blank" class="${sw.type === 'blank' ? 'on' : ''}">Blank</button>
         <button data-v="remote" class="${sw.type === 'remote' ? 'on' : ''}">Remote</button>
-        <button data-v="hub" class="${sw.type === 'hub' ? 'on' : ''}">Hub</button>
       </div>
       ${sw.type === 'blank' ? `<div class="si-blank">Blank — an empty position in this gang (nothing wired here).</div>` : `
       <div class="si-flags" data-flags="${i}">
@@ -3793,25 +3819,32 @@ function renderSwitchInspector(container, force) {
   }).join('');
   container.innerHTML = `
     <div class="wi-head">
-      <span class="wi-badge switch">${letter}</span>
-      <input class="wi-label" data-sf="label" value="${winEscAttr(loc.label)}" placeholder="Location (e.g. Kitchen entry)">
-      <button class="wi-del" data-act="remove" title="Remove gang">✕</button>
+      <span class="wi-badge ${isHub ? 'hub' : 'switch'}">${isHub ? '◉' : letter}</span>
+      <input class="wi-label" data-sf="label" value="${winEscAttr(loc.label)}" placeholder="${isHub ? 'Hub name (e.g. Living-room hub)' : 'Location (e.g. Kitchen entry)'}">
+      <button class="wi-del" data-act="remove" title="Remove ${isHub ? 'hub' : 'gang'}">✕</button>
     </div>
+    <div class="wi-field">
+      <div class="si-kind" data-kind>
+        <button data-kindv="gang" class="${!isHub ? 'on' : ''}">Switch gang</button>
+        <button data-kindv="hub" class="${isHub ? 'on' : ''}">◉ Hub</button>
+      </div>
+    </div>
+    ${isHub ? `
+    <div class="wi-field">
+      <p class="si-hubnote">A smart-home <b>hub / controller</b> — a standalone device (shown with a ◉ marker on the plan), not a switch in a gang. Name it above so it's easy to find.</p>
+    </div>` : `
     <div class="wi-field">
       <label>Gang ${letter} · ${loc.switches.length} switch${loc.switches.length !== 1 ? 'es' : ''}</label>
       <div class="si-rows">${rows}</div>
       <button class="si-add" data-act="add">+ Add a switch to Gang ${letter}</button>
-    </div>
+    </div>`}
     <div class="wi-field"><button class="wi-btn" data-act="csv">⤓ Export switch schedule (CSV)</button></div>
     <details class="wi-howto">
       <summary>Notes</summary>
       <ul>
-        <li>Each pin is a <b>gang</b> (one box), lettered <b>A, B, C…</b> on the plan.</li>
-        <li>Switches in a gang are numbered <b>${letter}1, ${letter}2…</b> top to bottom.</li>
-        <li><b>Normal / Dimmer</b> per switch.</li>
-        <li><b>3-way / 4-way:</b> a switch's <i>pair</i> menu links it to another switch into a <b>circuit</b> (all controlling one light). Add more switches to grow it — each circuit gets its own colour, and every strand of that circuit matches.</li>
-        <li>It's the <b>switches</b> that are paired, not the gangs — a strand links the two pins only to show it, but really connects (say) <b>A1 ↔ B1</b>. Hover a strand to see which switches. A gang with switches in two circuits shows two differently-coloured strands.</li>
-        <li><b>Cross-floor pairs</b> are written with a floor code (Basement = <b>B</b>, 1st = <b>1</b>, …), e.g. <b>1·A1</b> = the 1st floor's A1. On the plan they show as a small <b>↑/↓</b> chip beside the pin (↑ = a floor above, ↓ below).</li>
+        <li>A pin is either a <b>switch gang</b> (lettered A, B, C…) or a standalone <b>Hub</b> (◉) — choose at the top.</li>
+        <li>Switches in a gang are numbered <b>A1, A2…</b>; the <i>pair</i> menu links a switch into a coloured <b>circuit</b> (3-way / 4-way).</li>
+        <li><b>Cross-floor pairs</b> use a floor code (Basement = <b>B</b>, 1st = <b>1</b>, …), e.g. <b>1·A1</b>, and show a small <b>↑/↓</b> chip beside the pin.</li>
         <li>Use <i>unpair</i> to drop a switch from its circuit.</li>
       </ul>
     </details>`;
@@ -3819,6 +3852,21 @@ function renderSwitchInspector(container, force) {
 }
 
 function wireSwitchInspector(container, loc) {
+  // pin kind: switch gang vs standalone hub
+  container.querySelectorAll('[data-kind] button').forEach(b => {
+    b.addEventListener('click', () => {
+      const toHub = b.getAttribute('data-kindv') === 'hub';
+      if (toHub === isHubGang(loc)) return;             // no change
+      if (toHub) {
+        (loc.switches || []).forEach(sw => { if (sw.circuit != null) leaveCircuit(sw); });  // a hub isn't circuit-paired
+        loc.kind = 'hub';
+      } else {
+        delete loc.kind;
+        if (!Array.isArray(loc.switches) || !loc.switches.length) loc.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }];
+      }
+      touch(loc); renderSwitches(); renderSwitchInspector(container, true); scheduleSave();
+    });
+  });
   // location label
   const labelEl = container.querySelector('[data-sf="label"]');
   if (labelEl) labelEl.addEventListener('input', () => { loc.label = labelEl.value; touch(loc); renderSwitches(); scheduleSave(); });
@@ -3887,8 +3935,13 @@ function exportSwitchesCsv(opts) {
   const selSet = exportSelSet();
   const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Smart', 'LED Strip', 'Night', 'Circuit']];
   for (const f of getAllFloors()) {
-    (state.switches[f.id] || []).forEach((s, gi) => {
-      const letter = gangLetter(gi);
+    (state.switches[f.id] || []).forEach((s) => {
+      if (isHubGang(s)) {
+        if (selectedOnly) return;                       // hubs aren't part of the export selection
+        rows.push([f.name || f.id, '', s.label || 'Hub', '', '', 'Hub', '', '', '', '']);
+        return;
+      }
+      const letter = gangLetterOf(f.id, s);
       s.switches.forEach((sw, i) => {
         if (selectedOnly && !selSet.has(String(sw.id))) return;
         let circuit = '';
@@ -4074,10 +4127,19 @@ function renderSummary() {
       if (!list.some(gangShown)) continue;            // skip floors with nothing to show
       html += `<div class="sum-floor">${winEscHtml(String(f.name || f.id))}</div>`;
       const colorMap = circuitColorMap();
-      list.forEach((s, i) => {
-        if (!gangShown(s)) return;                     // letter stays from the ORIGINAL index i
+      list.forEach((s) => {
+        if (!gangShown(s)) return;
+        if (isHubGang(s)) {
+          if (onlySel) return;                         // hubs aren't export-selectable
+          total++;
+          html += `<details class="sum-item">
+            <summary><span class="sum-num hub">◉</span><span class="sum-label">${winEscHtml(s.label || 'Hub')}</span><span class="sum-meta">Hub</span></summary>
+            <div class="sum-detail"><div class="sum-kv"><b>Hub</b><span>Standalone smart-home hub / controller</span></div><button class="sum-locate" data-kind="switch" data-floor="${f.id}" data-id="${s.id}">Locate on plan ↗</button></div>
+          </details>`;
+          return;
+        }
         total++;
-        const letter = gangLetter(i);
+        const letter = gangLetterOf(f.id, s);
         const nSel    = s.switches.filter(x => x.type !== 'blank' && selSet.has(String(x.id))).length;
         let meta;
         if (onlySel) {
@@ -4086,7 +4148,6 @@ function renderSummary() {
           const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
           const blanks  = s.switches.filter(x => x.type === 'blank').length;
           const remotes = s.switches.filter(x => x.type === 'remote').length;
-          const hubs    = s.switches.filter(x => x.type === 'hub').length;
           const smart   = s.switches.filter(x => x.smart).length;
           const leds    = s.switches.filter(x => x.ledStrip).length;
           const nights  = s.switches.filter(x => x.nightMode).length;
@@ -4094,7 +4155,6 @@ function renderSummary() {
           const metaBits = [`${s.switches.length}-gang`];
           if (dimmers) metaBits.push(`${dimmers} dimmer${dimmers !== 1 ? 's' : ''}`);
           if (remotes) metaBits.push(`${remotes} remote${remotes !== 1 ? 's' : ''}`);
-          if (hubs)    metaBits.push(`${hubs} hub${hubs !== 1 ? 's' : ''}`);
           if (blanks)  metaBits.push(`${blanks} blank${blanks !== 1 ? 's' : ''}`);
           if (smart)   metaBits.push(`${smart} smart`);
           if (leds)    metaBits.push(`${leds} LED`);
