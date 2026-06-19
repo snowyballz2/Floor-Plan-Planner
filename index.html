@@ -311,18 +311,17 @@
   .wi-seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
   .wi-seg button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 7px 6px; font: inherit; font-size: 12px; cursor: pointer; }
   .wi-seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
-  /* Switch type segmented control uses the switch (blue) accent. */
-  .si-row .wi-seg button.on { background: #2563eb; }
-  /* Smart / LED Strip / Night Mode — same look as the type control above, but each
-     toggles independently (zero, one, or all can be highlighted). */
+  /* Switch type (now 5 options) + the Smart/LED/Night flags. Both wrap into a tidy
+     grid when the panel is narrow; 1px gaps over a border-coloured backing read as
+     the dividers, so it keeps the segmented look. */
+  .si-row .wi-seg, .si-flags { flex-wrap: wrap; gap: 1px; background: var(--border); }
   .si-flags { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-top: 7px; }
-  .si-flags button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 7px 2px; font: inherit; font-size: 11px; cursor: pointer; }
-  .si-flags button + button { border-left: 1px solid var(--border); }
+  .si-row .wi-seg button, .si-flags button {
+    flex: 1 1 auto; white-space: nowrap; padding: 7px 4px; font: inherit; font-size: 11px;
+    background: var(--paper); color: var(--ink-soft); border: none; cursor: pointer;
+  }
+  .si-row .wi-seg button.on { background: #2563eb; color: #fff; font-weight: 600; }
   .si-flags button.on { background: #0891b2; color: #fff; font-weight: 600; }
-  /* The type/flag bars now hold 4 and 3 buttons — keep each label on one line and
-     compact enough to fit the (narrow) properties panel. */
-  .si-row .wi-seg button, .si-flags button { white-space: nowrap; }
-  .si-row .wi-seg button { padding: 7px 2px; font-size: 11px; }
   .wi-flag { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink-soft); padding: 6px; font: inherit; font-size: 12px; cursor: pointer; }
   .wi-flag.on { background: #0891b2; border-color: #0891b2; color: #fff; font-weight: 600; }
   .si-blank { margin-top: 7px; font-size: 11px; color: var(--ink-faint); font-style: italic; }
@@ -3430,11 +3429,11 @@ let winDrag = null;
 // 1..N switches; each switch is normal/dimmer and may join a circuit (3-way,
 // 4-way, …) with any number of other switches that control the same light.
 // Same lifecycle as windows: save/load/undo/sync.
-const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote'];
+const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote', 'hub'];
 // Primary type is one of normal/dimmer/blank (exactly one). `smart` and `ledStrip`
 // are independent flags that can layer on top of any non-blank type.
-function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : 'Switch'; }
-function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); if (sw && sw.nightMode) o.push('Night Mode'); return o; }
+function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : t === 'hub' ? 'Hub' : 'Switch'; }
+function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); if (sw && sw.nightMode) o.push('Night'); return o; }
 
 // ---- Export selection: which individual switches are picked for the export table.
 // Synced across devices as one set (whole-set last-write-wins on its change-time).
@@ -3773,12 +3772,13 @@ function renderSwitchInspector(container, force) {
         <button data-v="dimmer" class="${sw.type === 'dimmer' ? 'on' : ''}">Dimmer</button>
         <button data-v="blank" class="${sw.type === 'blank' ? 'on' : ''}">Blank</button>
         <button data-v="remote" class="${sw.type === 'remote' ? 'on' : ''}">Remote</button>
+        <button data-v="hub" class="${sw.type === 'hub' ? 'on' : ''}">Hub</button>
       </div>
       ${sw.type === 'blank' ? `<div class="si-blank">Blank — an empty position in this gang (nothing wired here).</div>` : `
       <div class="si-flags" data-flags="${i}">
         <button data-flag="smart" class="${sw.smart ? 'on' : ''}">Smart</button>
         <button data-flag="ledStrip" class="${sw.ledStrip ? 'on' : ''}">LED Strip</button>
-        <button data-flag="nightMode" class="${sw.nightMode ? 'on' : ''}">Night Mode</button>
+        <button data-flag="nightMode" class="${sw.nightMode ? 'on' : ''}">Night</button>
       </div>
       ${cid != null ? `<div class="si-circuit" style="--cc:${color}">
         <span class="si-cdot"></span>
@@ -3885,7 +3885,7 @@ function wireSwitchInspector(container, loc) {
 function exportSwitchesCsv(opts) {
   const selectedOnly = !!(opts && opts.selectedOnly);
   const selSet = exportSelSet();
-  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Smart', 'LED Strip', 'Night Mode', 'Circuit']];
+  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Smart', 'LED Strip', 'Night', 'Circuit']];
   for (const f of getAllFloors()) {
     (state.switches[f.id] || []).forEach((s, gi) => {
       const letter = gangLetter(gi);
@@ -4086,6 +4086,7 @@ function renderSummary() {
           const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
           const blanks  = s.switches.filter(x => x.type === 'blank').length;
           const remotes = s.switches.filter(x => x.type === 'remote').length;
+          const hubs    = s.switches.filter(x => x.type === 'hub').length;
           const smart   = s.switches.filter(x => x.smart).length;
           const leds    = s.switches.filter(x => x.ledStrip).length;
           const nights  = s.switches.filter(x => x.nightMode).length;
@@ -4093,6 +4094,7 @@ function renderSummary() {
           const metaBits = [`${s.switches.length}-gang`];
           if (dimmers) metaBits.push(`${dimmers} dimmer${dimmers !== 1 ? 's' : ''}`);
           if (remotes) metaBits.push(`${remotes} remote${remotes !== 1 ? 's' : ''}`);
+          if (hubs)    metaBits.push(`${hubs} hub${hubs !== 1 ? 's' : ''}`);
           if (blanks)  metaBits.push(`${blanks} blank${blanks !== 1 ? 's' : ''}`);
           if (smart)   metaBits.push(`${smart} smart`);
           if (leds)    metaBits.push(`${leds} LED`);
