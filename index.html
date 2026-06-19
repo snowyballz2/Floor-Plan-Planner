@@ -3568,8 +3568,11 @@ function normalizeSwitches() {
     for (const s of state.switches[sf]) {
       if (s._ts == null) s._ts = 0;
       if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }];
-      // Migrate the old "hub" switch-type: promote the whole pin to a hub device.
-      if (s.kind !== 'hub' && s.switches.some(sw => sw.type === 'hub')) { s.kind = 'hub'; s.switches.forEach(sw => { if (sw.type === 'hub') sw.type = 'normal'; }); }
+      // The old "hub" switch-type is gone. Promote a pin to a hub ONLY when it's
+      // unambiguously one — a lone, unpaired hub switch — so paired or multi-switch
+      // gangs are never disturbed (anything else just gets the dead type demoted to
+      // 'normal' below, keeping the gang and all its pairings intact).
+      if (s.kind !== 'hub' && s.switches.length === 1 && s.switches[0].type === 'hub' && s.switches[0].circuit == null) s.kind = 'hub';
       for (const sw of s.switches) {
         if (sw.id == null) sw.id = genId();
         if (sw.circuit === undefined) sw.circuit = null;
@@ -3578,7 +3581,6 @@ function normalizeSwitches() {
         if (typeof sw.ledStrip !== 'boolean') sw.ledStrip = false;
         if (typeof sw.nightMode !== 'boolean') sw.nightMode = false;
       }
-      if (isHubGang(s)) s.switches.forEach(sw => { sw.circuit = null; });   // a hub is never circuit-paired
     }
   }
   migrateSwitchPairing();   // legacy: pairedLocId → pairedId
