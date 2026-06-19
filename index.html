@@ -1279,10 +1279,10 @@ const FLOORS_CLEAN = {
 // so we don't have to re-list the giant base64 payload. User-added floors and
 // user-edited names live in state.floors and override these defaults.
 const FLOOR_META = {
-  '1': { name: '1st Floor', order: 1 },
-  '2': { name: '2nd Floor', order: 2 },
-  '3': { name: '3rd Floor', order: 3 },
-  '4': { name: '4th Floor', order: 4 },
+  '1': { name: 'Basement',  order: 1 },
+  '2': { name: '1st Floor', order: 2 },
+  '3': { name: '2nd Floor', order: 3 },
+  '4': { name: '3rd Floor', order: 4 },
 };
 
 // Effective floor data: state.floors override > FLOORS default > FLOOR_META.
@@ -1648,6 +1648,26 @@ async function load() {
         if (l._ts == null) l._ts = 0;
       }
     }
+    // One-time floor rename: shift the four default floors down a level (1st Floor
+    // → Basement, 2nd → 1st, 3rd → 2nd, 4th → 3rd). FLOOR_META already supplies the
+    // new defaults; this only fixes a saved name override that still holds the OLD
+    // default name (e.g. left behind by calibrating a floor) so it doesn't mask the
+    // new default — bumping _ts so the corrected name syncs out. A genuinely custom
+    // name is left untouched. Guarded by a flag so it runs once and never fights a
+    // future manual rename. No annotation data is touched.
+    try {
+      if (!localStorage.getItem('floor-rename-basement-v1')) {
+        const OLD_NAME = { '1': '1st Floor', '2': '2nd Floor', '3': '3rd Floor', '4': '4th Floor' };
+        const NEW_NAME = { '1': 'Basement',  '2': '1st Floor', '3': '2nd Floor', '4': '3rd Floor' };
+        let renamed = false;
+        for (const id of Object.keys(NEW_NAME)) {
+          const ovr = state.floors[id];
+          if (ovr && ovr.name === OLD_NAME[id]) { ovr.name = NEW_NAME[id]; ovr._ts = Date.now(); renamed = true; }
+        }
+        localStorage.setItem('floor-rename-basement-v1', '1');
+        if (renamed) scheduleSave();
+      }
+    } catch (e) {}
   } catch (e) { console.warn('Load failed:', e); }
 }
 
