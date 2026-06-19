@@ -1496,6 +1496,7 @@ const state = {
   // Switches picked for export (per-device, not synced). selectMode + snapshot are
   // the transactional floor-plan selection mode (snapshot lets Cancel revert).
   exportSel: [],
+  exportSelTs: 0,        // last-change time of the selection (whole-set LWW for sync)
   selectMode: false,
   selectSnapshot: null,
 };
@@ -1561,6 +1562,7 @@ async function save() {
       view: state.view,
       layerVis: state.layerVis,
       exportSel: state.exportSel,
+      exportSelTs: state.exportSelTs,
     };
     if (window.storage && window.storage.set) {
       await window.storage.set(STORAGE_KEY, JSON.stringify(data));
@@ -1677,6 +1679,7 @@ async function load() {
     if (data.view) state.view = data.view;
     if (data.layerVis) state.layerVis = { furniture: true, windows: true, switches: true, ...data.layerVis };
     if (Array.isArray(data.exportSel)) state.exportSel = data.exportSel.map(String);
+    if (typeof data.exportSelTs === 'number') state.exportSelTs = data.exportSelTs;
     // Migration: stamp existing items lacking _ts so sync LWW treats them as
     // "ancient" (any timestamped change overrides them); ensure tombstone maps
     // exist for every floor.
@@ -1755,6 +1758,8 @@ function getSyncPayload() {
     deletedSwitches: state.deletedSwitches,
     floors: state.floors,
     deletedFloors: state.deletedFloors,
+    exportSel: state.exportSel,
+    exportSelTs: state.exportSelTs,
   };
 }
 
@@ -1941,6 +1946,14 @@ function mergeSyncData(remote) {
     }
     state.deletedFloors = mergedDel;
   }
+  // Export selection: synced as one set, last-write-wins on its change-time. This
+  // lets both selecting and deselecting propagate (newer whole-set replaces older).
+  const rSelTs = remote.exportSelTs || 0;
+  if (Array.isArray(remote.exportSel) && rSelTs > (state.exportSelTs || 0)) {
+    state.exportSel = remote.exportSel.map(String);
+    state.exportSelTs = rSelTs;
+    changed = true;
+  }
   return changed;
 }
 
@@ -1994,7 +2007,7 @@ async function doSync(opts) {
     const remote = await gistPull(gistId, token);
     const changed = remote ? mergeSyncData(remote) : false;
     await gistPush(gistId, token, getSyncPayload());
-    if (changed) { renderFloor(); }
+    if (changed) { renderFloor(); if (summaryModalBg && summaryModalBg.classList.contains('open')) renderSummary(); }
     // Local save persists the (possibly merged) state; suppress auto-sync echo.
     suppressAutoSync = true;
     await save();
@@ -3381,13 +3394,15 @@ function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ?
 function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); return o; }
 
 // ---- Export selection: which individual switches are picked for the export table.
-// Per-device (saved locally, not synced). Blanks can't be selected.
+// Synced across devices as one set (whole-set last-write-wins on its change-time).
+// Blanks can't be selected.
 function exportSelSet() { return new Set((state.exportSel || []).map(String)); }
 function isSwSelected(id) { return exportSelSet().has(String(id)); }
+function commitExportSel(arr) { state.exportSel = arr; state.exportSelTs = Date.now(); }
 function setSwSelected(id, on) {
   const set = exportSelSet();
   if (on) set.add(String(id)); else set.delete(String(id));
-  state.exportSel = [...set];
+  commitExportSel([...set]);
 }
 function gangSelectableSwitches(g) { return g.switches.filter(sw => sw.type !== 'blank'); }
 function gangAnySelected(g) { const set = exportSelSet(); return gangSelectableSwitches(g).some(sw => set.has(String(sw.id))); }
@@ -3397,7 +3412,7 @@ function toggleGangSelection(g) {
   const any = gangAnySelected(g);
   const set = exportSelSet();
   sel.forEach(sw => { if (any) set.delete(String(sw.id)); else set.add(String(sw.id)); });
-  state.exportSel = [...set];
+  commitExportSel([...set]);
 }
 function selectedSwitchCount() { return (state.exportSel || []).length; }
 
@@ -3885,7 +3900,7 @@ function enterSelectMode() {
   // turn off any active editing tool
   state.switchMode = false; window.__applySwitchMode && window.__applySwitchMode();
   state.selectMode = true;
-  state.selectSnapshot = [...(state.exportSel || [])];
+  state.selectSnapshot = { sel: [...(state.exportSel || [])], ts: state.exportSelTs };
   state.selectedSwitchId = null;                 // close any open inspector
   document.body.classList.add('select-mode');
   document.getElementById('select-bar').hidden = false;
@@ -3900,7 +3915,13 @@ function exitSelectMode() {
   renderSwitches();
 }
 function acceptSelectMode() { exitSelectMode(); scheduleSave(); }
-function cancelSelectMode() { state.exportSel = state.selectSnapshot || []; exitSelectMode(); scheduleSave(); if (summaryModalBg && summaryModalBg.classList.contains('open')) renderSummary(); }
+function cancelSelectMode() {
+  const snap = state.selectSnapshot || { sel: [], ts: 0 };
+  state.exportSel = snap.sel || [];            // revert selection AND its change-time
+  state.exportSelTs = snap.ts || 0;
+  exitSelectMode(); scheduleSave();
+  if (summaryModalBg && summaryModalBg.classList.contains('open')) renderSummary();
+}
 (function wireSelectMode() {
   const btn = document.getElementById('select-mode-btn');
   if (btn) btn.addEventListener('click', enterSelectMode);
