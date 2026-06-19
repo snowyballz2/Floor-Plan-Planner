@@ -3478,15 +3478,11 @@ function selectedSwitchCount() { return (state.exportSel || []).length; }
 function currentSwitches() { return state.switches[state.currentFloor] || []; }
 function findSwitch(id) { return currentSwitches().find(s => s.id === id); }
 
-// Naming convention: each pin is a GANG, lettered A, B, C… by its position on the
+// Naming convention: each pin is a GANG, coded G1, G2, G3… by its position on the
 // floor. Switches inside a gang are numbered 1, 2, 3… so a single switch reads as
-// "A1", "B2", etc. Pairing is switch↔switch (a specific switch to a specific switch).
-function gangLetter(n) {
-  let s = '';
-  n = (n | 0);
-  do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
-  return s;
-}
+// "G1-1", "G2-3", etc. Pairing is switch↔switch (a specific switch to a specific switch).
+// Gang code: G1, G2, G3… by position on the floor (switches read as G1-1, G1-2…).
+function gangLetter(n) { return 'G' + ((n | 0) + 1); }
 // Locate a single switch by its id across every floor → {gang, sw, gangIdx, swIdx, floor}.
 function findSwitchById(id) {
   if (id == null) return null;
@@ -3501,7 +3497,7 @@ function findSwitchById(id) {
 }
 function switchRefById(id) {                       // "A2"
   const h = findSwitchById(id);
-  return h ? gangLetterOf(h.floor.id, h.gang) + (h.swIdx + 1) : null;
+  return h ? gangLetterOf(h.floor.id, h.gang) + '-' + (h.swIdx + 1) : null;
 }
 // ---- Circuits: a set of switches that all control the same light (3-way, 4-way,
 // …). Membership is a shared `circuit` id on each switch (null = unpaired). Every
@@ -3525,7 +3521,7 @@ function circuitMembers(circuitId) {
   if (circuitId == null) return out;
   for (const f of getAllFloors()) (state.switches[f.id] || []).forEach((g) => {
     if (isHubGang(g)) return;                           // hubs aren't part of circuits
-    g.switches.forEach((sw, si) => { if (String(sw.circuit) === String(circuitId)) out.push({ sw, gang: g, floor: f, ref: gangLetterOf(f.id, g) + (si + 1) }); });
+    g.switches.forEach((sw, si) => { if (String(sw.circuit) === String(circuitId)) out.push({ sw, gang: g, floor: f, ref: gangLetterOf(f.id, g) + '-' + (si + 1) }); });
   });
   return out;
 }
@@ -3689,7 +3685,7 @@ function renderSwitches() {
   const colorMap = circuitColorMap();
   // The specific switch(es) of gang `g` that belong to circuit `cid` — the strand
   // represents these switches being paired, NOT the gangs themselves.
-  const refsIn = (g, cid) => g.switches.map((sw, si) => (sw.circuit != null && String(sw.circuit) === String(cid)) ? gangLetterOf(f.id, g) + (si + 1) : null).filter(Boolean);
+  const refsIn = (g, cid) => g.switches.map((sw, si) => (sw.circuit != null && String(sw.circuit) === String(cid)) ? gangLetterOf(f.id, g) + '-' + (si + 1) : null).filter(Boolean);
   const pinsByCircuit = {};                          // circuitId → distinct gangs on this floor, in display order
   list.forEach(g => {
     const seen = new Set();
@@ -3786,11 +3782,11 @@ function renderSwitchInspector(container, force) {
   for (const fl of orderedFloors) {
     (state.switches[fl.id] || []).forEach((g) => {
       if (isHubGang(g) || String(g.id) === String(loc.id)) return;   // hubs aren't pairable; can't pair within the same gang
-      g.switches.forEach((sw, si) => { if (sw.type === 'blank') return; units.push({ id: sw.id, ref: floorCode(fl) + '·' + gangLetterOf(fl.id, g) + (si + 1), label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }); });
+      g.switches.forEach((sw, si) => { if (sw.type === 'blank') return; units.push({ id: sw.id, ref: floorCode(fl) + '·' + gangLetterOf(fl.id, g) + '-' + (si + 1), label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }); });
     });
   }
   const rows = loc.switches.map((sw, i) => {
-    const ref = letter + (i + 1);
+    const ref = letter + '-' + (i + 1);
     const cid = sw.circuit;
     const members = cid != null ? circuitMembers(cid) : [];
     const color = cid != null ? (colorMap[String(cid)] || CIRCUIT_COLORS[0]) : null;
@@ -3851,9 +3847,9 @@ function renderSwitchInspector(container, force) {
     <details class="wi-howto">
       <summary>Notes</summary>
       <ul>
-        <li>A pin is either a <b>switch gang</b> (lettered A, B, C…) or a standalone <b>Hub</b> (◉) — choose at the top.</li>
-        <li>Switches in a gang are numbered <b>A1, A2…</b>; the <i>pair</i> menu links a switch into a coloured <b>circuit</b> (3-way / 4-way).</li>
-        <li><b>Cross-floor pairs</b> use a floor code (Basement = <b>B</b>, 1st = <b>1</b>, …), e.g. <b>1·A1</b>, and show a small <b>↑/↓</b> chip beside the pin.</li>
+        <li>A pin is either a <b>switch gang</b> (numbered G1, G2, G3…) or a standalone <b>Hub</b> (◉) — choose at the top.</li>
+        <li>Switches in a gang read <b>G1-1, G1-2…</b>; the <i>pair</i> menu links a switch into a coloured <b>circuit</b> (3-way / 4-way).</li>
+        <li><b>Cross-floor pairs</b> use a floor code (Basement = <b>B</b>, 1st = <b>1</b>, …), e.g. <b>1·G1-1</b>, and show a small <b>↑/↓</b> chip beside the pin.</li>
         <li>Use <i>unpair</i> to drop a switch from its circuit.</li>
       </ul>
     </details>`;
@@ -3958,7 +3954,7 @@ function exportSwitchesCsv(opts) {
           const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => memberRef(m, f.id));
           if (others.length) circuit = (others.length + 1) + '-way with ' + others.join(' + ');
         }
-        rows.push([f.name || f.id, letter, s.label, letter + (i + 1), sw.control || '', switchTypeLabel(sw.type), sw.smart ? 'Yes' : '', sw.ledStrip ? 'Yes' : '', sw.nightMode ? 'Yes' : '', circuit]);
+        rows.push([f.name || f.id, letter, s.label, letter + '-' + (i + 1), sw.control || '', switchTypeLabel(sw.type), sw.smart ? 'Yes' : '', sw.ledStrip ? 'Yes' : '', sw.nightMode ? 'Yes' : '', circuit]);
       });
     });
   }
@@ -4184,9 +4180,9 @@ function renderSummary() {
             const picked = selectable && selSet.has(String(sw.id));
             if (picked) shownSel++;
             const cb = selectable
-              ? `<label class="sum-pick" title="Select ${letter}${j + 1} for export"><input type="checkbox" data-pick="${sw.id}" ${picked ? 'checked' : ''}></label>`
+              ? `<label class="sum-pick" title="Select ${letter}-${j + 1} for export"><input type="checkbox" data-pick="${sw.id}" ${picked ? 'checked' : ''}></label>`
               : `<span class="sum-pick" style="width:15px"></span>`;
-            return `<div class="sum-kv${picked ? ' picked' : ''}">${cb}<b>${letter}${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${switchTypeLabel(sw.type)}${flags.length ? ' · ' + winEscHtml(flags.join(' · ')) : ''}${circ}</span></div>`;
+            return `<div class="sum-kv${picked ? ' picked' : ''}">${cb}<b>${letter}-${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${switchTypeLabel(sw.type)}${flags.length ? ' · ' + winEscHtml(flags.join(' · ')) : ''}${circ}</span></div>`;
           }).join('');
         html += `<details class="sum-item"${onlySel ? ' open' : ''}>
           <summary><span class="sum-num sw">${letter}</span><span class="sum-label">${winEscHtml(s.label)}</span><span class="sum-meta">${meta}</span></summary>
