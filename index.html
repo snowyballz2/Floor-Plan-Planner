@@ -869,6 +869,7 @@
   .floor-menu[hidden] { display: none; }
   #undo-btn, #summary-open-btn { display: inline-flex; align-items: center; gap: 5px; }
   .right-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .ra-lb-short { display: none; }   /* desktop shows the full label; mobile swaps in the short one */
   @media (max-width: 768px) {
     /* ---- slim top bar: floor tabs + a few actions ---- */
     header {
@@ -885,10 +886,6 @@
     .header-spacer { display: none; }
     #add-custom-btn, .controls label.toggle, #measure-toggle, #room-label-add-btn,
     #zoom-out, #zoom-in, #zoom-level, #sync-btn-status { display: none; }
-    /* Only the current view's add tool shows (icon-only); the others are redundant
-       with the bottom tab bar on phones. */
-    body:not(.view-windows) #window-add-btn { display: none; }
-    body:not(.view-switches) #switch-add-btn { display: none; }
     /* Select is icon-only on phones to save room; Summary & Sync keep their labels. */
     #select-mode-btn .ra-ic { display: inline-flex !important; }
     #select-mode-btn > span:not(.ra-ic) { display: none; }
@@ -902,8 +899,10 @@
     }
     /* Right group (Summary + Sync) is text-only on phones; tighten everything to fit one row. */
     .ra-ic { display: none; }
+    .ra-lb-full { display: none; }      /* "Summary" → "List" on phones to save room */
+    .ra-lb-short { display: inline; }
     #undo-btn, #clear-floor, #layers-btn, #zoom-fit { padding: 6px 8px !important; }
-    .right-actions button { padding: 6px 11px !important; font-size: 13px; }
+    .right-actions button { padding: 6px 10px !important; font-size: 13px; }
     .right-actions { gap: 5px; }
     .floor-menu {
       position: absolute; top: calc(100% + 6px); left: calc(8px + env(safe-area-inset-left)); z-index: 70;
@@ -1019,8 +1018,8 @@
     <button id="undo-btn" title="Undo (Cmd+Z)" disabled style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">↺</span><span class="blb">Undo</span></button>
     <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
     <button id="room-label-add-btn" title="Add room label (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🏷 Label</button>
-    <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟<span class="blb"> Windows</span></button>
-    <button id="switch-add-btn" title="Add light switch / gang (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">💡<span class="blb"> Switches</span></button>
+    <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟 Windows</button>
+    <button id="switch-add-btn" title="Add light switch / gang (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">💡 Switches</button>
     <div class="layers-wrap" id="layers-wrap">
       <button id="layers-btn" type="button" title="Show / hide layers" aria-haspopup="true" aria-expanded="false" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">👁</span><span class="blb">Layers</span></button>
       <div class="layers-menu" id="layers-menu" hidden>
@@ -1035,7 +1034,7 @@
   <div class="header-spacer"></div>
   <div class="right-actions">
     <button id="select-mode-btn" title="Select switches for export (locks editing)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">✓</span><span>Select</span></button>
-    <button id="summary-open-btn" title="Window &amp; switch schedule" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">📋</span><span>Summary</span></button>
+    <button id="summary-open-btn" title="Window &amp; switch schedule" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">📋</span><span class="ra-lb-full">Summary</span><span class="ra-lb-short">List</span></button>
     <button id="sync-open-btn" title="Cloud sync" style="background:transparent;border:1px solid var(--border);color:var(--ink-soft);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;">
       <span class="ra-ic" id="sync-btn-icon">↻</span>
       <span>Sync</span>
@@ -4199,7 +4198,19 @@ function applyLayerVis() {
 }
 document.getElementById('layers-btn').addEventListener('click', (e) => {
   const m = document.getElementById('layers-menu');
-  m.hidden = !m.hidden;
+  const opening = m.hidden;
+  m.hidden = !opening;
+  if (opening) {
+    // Anchor as a fixed popup so the scrollable tool strip (overflow) can't clip it,
+    // right-aligned to the button but clamped to stay fully on-screen.
+    const r = e.currentTarget.getBoundingClientRect();
+    m.style.position = 'fixed';
+    m.style.top = (r.bottom + 6) + 'px';
+    m.style.right = 'auto';
+    const menuW = m.offsetWidth || 200;
+    const left = Math.max(8, Math.min(r.right - menuW, window.innerWidth - menuW - 8));
+    m.style.left = Math.round(left) + 'px';
+  }
   e.currentTarget.setAttribute('aria-expanded', String(!m.hidden));
   e.stopPropagation();
 });
