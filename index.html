@@ -406,6 +406,7 @@
   #sum-export-sel { border-color: #16a34a !important; color: #15803d !important; }
   #sum-export-sel:hover { background: rgba(22,163,74,0.10); }
   #sum-export-sel:disabled { opacity: 0.4; cursor: default; }
+  #sum-only-sel.on { background: #16a34a !important; border-color: #16a34a !important; color: #fff !important; }
   .sum-floor { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); margin: 8px 4px 4px; }
   .sum-item { background: var(--paper); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 5px; }
   .sum-item > summary { list-style: none; cursor: pointer; padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
@@ -1272,6 +1273,7 @@
     <div class="sum-toolbar">
       <span class="sum-count" id="sum-count"></span>
       <span style="flex:1"></span>
+      <button id="sum-only-sel" hidden>Only selected</button>
       <button id="sum-expand">Expand all</button>
       <button id="sum-collapse">Collapse all</button>
       <button id="sum-export-sel" hidden>⤓ Export selected</button>
@@ -3935,6 +3937,7 @@ function cancelSelectMode() {
 // SUMMARY (windows + switches schedule)
 // ============================================================
 let summaryTab = 'windows';
+let summarySelectedOnly = false;   // Switches tab: show only the export-selected switches
 const summaryModalBg = document.getElementById('summary-modal-bg');
 
 function openSummary(tab) {
@@ -3976,63 +3979,80 @@ function renderSummary() {
     countEl.textContent = total ? `${total} window${total !== 1 ? 's' : ''}` : '';
     if (!total) html = '<div class="sum-empty">No windows yet. Use the 🪟 Windows tool to add some.</div>';
   } else {
+    const selSet = exportSelSet();
+    const onlySel = summarySelectedOnly;
+    const gangShown = (s) => !onlySel || s.switches.some(sw => sw.type !== 'blank' && selSet.has(String(sw.id)));
+    let shownSel = 0;
     for (const f of getAllFloors()) {
       const list = state.switches[f.id] || [];
-      if (!list.length) continue;
+      if (!list.some(gangShown)) continue;            // skip floors with nothing to show
       html += `<div class="sum-floor">${winEscHtml(String(f.name || f.id))}</div>`;
       const colorMap = circuitColorMap();
       list.forEach((s, i) => {
+        if (!gangShown(s)) return;                     // letter stays from the ORIGINAL index i
         total++;
         const letter = gangLetter(i);
-        const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
-        const blanks  = s.switches.filter(x => x.type === 'blank').length;
-        const smart   = s.switches.filter(x => x.smart).length;
-        const leds    = s.switches.filter(x => x.ledStrip).length;
-        const paired  = s.switches.filter(x => x.circuit != null).length;
-        const metaBits = [`${s.switches.length}-gang`];
-        if (dimmers) metaBits.push(`${dimmers} dimmer${dimmers !== 1 ? 's' : ''}`);
-        if (blanks)  metaBits.push(`${blanks} blank${blanks !== 1 ? 's' : ''}`);
-        if (smart)   metaBits.push(`${smart} smart`);
-        if (leds)    metaBits.push(`${leds} LED`);
-        if (paired)  metaBits.push(`${paired} paired`);
-        const meta = metaBits.join(' · ');
-        const rows = s.switches.map((sw, j) => {
-          let circ = '';
-          if (sw.circuit != null) {
-            const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => m.ref);
-            if (others.length) circ = ` · <span style="color:${colorMap[String(sw.circuit)] || CIRCUIT_COLORS[0]}">●</span> ${(others.length + 1)}-way: ${winEscHtml(others.join(' · '))}`;
-          }
-          const flags = switchFlags(sw);
-          const selectable = sw.type !== 'blank';
-          const picked = selectable && isSwSelected(sw.id);
-          const cb = selectable
-            ? `<label class="sum-pick" title="Select ${letter}${j + 1} for export"><input type="checkbox" data-pick="${sw.id}" ${picked ? 'checked' : ''}></label>`
-            : `<span class="sum-pick" style="width:15px"></span>`;
-          return `<div class="sum-kv${picked ? ' picked' : ''}">${cb}<b>${letter}${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${switchTypeLabel(sw.type)}${flags.length ? ' · ' + winEscHtml(flags.join(' · ')) : ''}${circ}</span></div>`;
-        }).join('');
-        html += `<details class="sum-item">
+        const nSel    = s.switches.filter(x => x.type !== 'blank' && selSet.has(String(x.id))).length;
+        let meta;
+        if (onlySel) {
+          meta = `${nSel} of ${s.switches.length} selected`;
+        } else {
+          const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
+          const blanks  = s.switches.filter(x => x.type === 'blank').length;
+          const smart   = s.switches.filter(x => x.smart).length;
+          const leds    = s.switches.filter(x => x.ledStrip).length;
+          const paired  = s.switches.filter(x => x.circuit != null).length;
+          const metaBits = [`${s.switches.length}-gang`];
+          if (dimmers) metaBits.push(`${dimmers} dimmer${dimmers !== 1 ? 's' : ''}`);
+          if (blanks)  metaBits.push(`${blanks} blank${blanks !== 1 ? 's' : ''}`);
+          if (smart)   metaBits.push(`${smart} smart`);
+          if (leds)    metaBits.push(`${leds} LED`);
+          if (paired)  metaBits.push(`${paired} paired`);
+          meta = metaBits.join(' · ');
+        }
+        const rows = s.switches.map((sw, j) => ({ sw, j }))
+          .filter(({ sw }) => !onlySel || (sw.type !== 'blank' && selSet.has(String(sw.id))))   // only-selected hides the rest
+          .map(({ sw, j }) => {
+            let circ = '';
+            if (sw.circuit != null) {
+              const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => m.ref);
+              if (others.length) circ = ` · <span style="color:${colorMap[String(sw.circuit)] || CIRCUIT_COLORS[0]}">●</span> ${(others.length + 1)}-way: ${winEscHtml(others.join(' · '))}`;
+            }
+            const flags = switchFlags(sw);
+            const selectable = sw.type !== 'blank';
+            const picked = selectable && selSet.has(String(sw.id));
+            if (picked) shownSel++;
+            const cb = selectable
+              ? `<label class="sum-pick" title="Select ${letter}${j + 1} for export"><input type="checkbox" data-pick="${sw.id}" ${picked ? 'checked' : ''}></label>`
+              : `<span class="sum-pick" style="width:15px"></span>`;
+            return `<div class="sum-kv${picked ? ' picked' : ''}">${cb}<b>${letter}${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${switchTypeLabel(sw.type)}${flags.length ? ' · ' + winEscHtml(flags.join(' · ')) : ''}${circ}</span></div>`;
+          }).join('');
+        html += `<details class="sum-item"${onlySel ? ' open' : ''}>
           <summary><span class="sum-num sw">${letter}</span><span class="sum-label">${winEscHtml(s.label)}</span><span class="sum-meta">${meta}</span></summary>
           <div class="sum-detail">${rows}<button class="sum-locate" data-kind="switch" data-floor="${f.id}" data-id="${s.id}">Locate on plan ↗</button></div>
         </details>`;
       });
     }
-    countEl.textContent = total ? `${total} location${total !== 1 ? 's' : ''}` : '';
-    if (!total) html = '<div class="sum-empty">No switches yet. Use the 💡 Switches tool to add some.</div>';
+    countEl.textContent = onlySel ? (shownSel ? `${shownSel} selected` : '') : (total ? `${total} location${total !== 1 ? 's' : ''}` : '');
+    if (onlySel && !shownSel) html = '<div class="sum-empty">No switches selected. Tick switches below (turn off “Only selected”), or use “Select” on the floor plan.</div>';
+    else if (!onlySel && !total) html = '<div class="sum-empty">No switches yet. Use the 💡 Switches tool to add some.</div>';
   }
   body.innerHTML = html;
   body.querySelectorAll('.sum-locate').forEach(b => b.addEventListener('click', () => {
     summaryLocate(b.dataset.kind, b.dataset.floor, isNaN(+b.dataset.id) ? b.dataset.id : +b.dataset.id);
   }));
   // Export-selection: checkboxes (switches tab only) + the Export-selected button.
+  const onlyBtn = document.getElementById('sum-only-sel');
+  if (onlyBtn) { onlyBtn.hidden = summaryTab !== 'switches'; onlyBtn.classList.toggle('on', summarySelectedOnly); }
   const exBtn = document.getElementById('sum-export-sel');
   if (exBtn) exBtn.hidden = summaryTab !== 'switches';
   updateSummarySelUI();
   body.querySelectorAll('[data-pick]').forEach(cb => cb.addEventListener('change', () => {
     setSwSelected(cb.dataset.pick, cb.checked);
-    const row = cb.closest('.sum-kv'); if (row) row.classList.toggle('picked', cb.checked);
     scheduleSave();
     renderSwitches();          // reflect on the floor-plan pins
-    updateSummarySelUI();
+    if (summarySelectedOnly) { renderSummary(); }   // an unticked row leaves the filtered view
+    else { const row = cb.closest('.sum-kv'); if (row) row.classList.toggle('picked', cb.checked); updateSummarySelUI(); }
   }));
 }
 function updateSummarySelUI() {
@@ -4059,6 +4079,7 @@ document.getElementById('sum-expand').addEventListener('click', () => document.q
 document.getElementById('sum-collapse').addEventListener('click', () => document.querySelectorAll('#sum-body .sum-item').forEach(d => d.open = false));
 document.getElementById('sum-csv').addEventListener('click', () => summaryTab === 'windows' ? exportWindowsCsv() : exportSwitchesCsv());
 document.getElementById('sum-export-sel').addEventListener('click', exportSelectedSwitchesCsv);
+document.getElementById('sum-only-sel').addEventListener('click', () => { summarySelectedOnly = !summarySelectedOnly; renderSummary(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && summaryModalBg.classList.contains('open')) summaryModalBg.classList.remove('open'); });
 
 // ============================================================
