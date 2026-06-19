@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Floor Plan — Furniture Planner</title>
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -878,10 +878,20 @@
     .floor-tabs { flex: 1; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
     .floor-tabs::-webkit-scrollbar { display: none; }
     .floor-tabs button { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
-    .controls { gap: 4px; flex-wrap: nowrap; flex: 0 0 auto; }
+    /* Tool strip scrolls if needed so the right-side actions never get pushed off. */
+    .controls { gap: 4px; flex-wrap: nowrap; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    .controls::-webkit-scrollbar { display: none; }
     .controls button { padding: 6px 9px; font-size: 15px; }
+    .header-spacer { display: none; }
     #add-custom-btn, .controls label.toggle, #measure-toggle, #room-label-add-btn,
     #zoom-out, #zoom-in, #zoom-level, #sync-btn-status { display: none; }
+    /* Only the current view's add tool shows (icon-only); the others are redundant
+       with the bottom tab bar on phones. */
+    body:not(.view-windows) #window-add-btn { display: none; }
+    body:not(.view-switches) #switch-add-btn { display: none; }
+    /* Select is icon-only on phones to save room; Summary & Sync keep their labels. */
+    #select-mode-btn .ra-ic { display: inline-flex !important; }
+    #select-mode-btn > span:not(.ra-ic) { display: none; }
     header { position: relative; }
     /* Floor tabs collapse to a compact dropdown on phones. */
     #floor-tabs { display: none; }
@@ -1009,8 +1019,8 @@
     <button id="undo-btn" title="Undo (Cmd+Z)" disabled style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">↺</span><span class="blb">Undo</span></button>
     <button id="measure-toggle" title="Measure (Esc to exit)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">📏 Measure</button>
     <button id="room-label-add-btn" title="Add room label (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🏷 Label</button>
-    <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟 Windows</button>
-    <button id="switch-add-btn" title="Add light switch / gang (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">💡 Switches</button>
+    <button id="window-add-btn" title="Add window for blind measurements (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">🪟<span class="blb"> Windows</span></button>
+    <button id="switch-add-btn" title="Add light switch / gang (click on canvas)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;">💡<span class="blb"> Switches</span></button>
     <div class="layers-wrap" id="layers-wrap">
       <button id="layers-btn" type="button" title="Show / hide layers" aria-haspopup="true" aria-expanded="false" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 10px;font-size:12px;border-radius:5px;cursor:pointer;font-family:inherit;"><span class="bic">👁</span><span class="blb">Layers</span></button>
       <div class="layers-menu" id="layers-menu" hidden>
@@ -2861,6 +2871,14 @@ function setZoomAround(newZoom, sx, sy) {
   wrap.scrollTop = cy * ratio - ly;
   scheduleSave();
 }
+// iOS Safari still pinch-zooms the whole PAGE (scaling the header/footer and
+// trapping you) even with user-scalable=no — it only honours preventDefault on
+// these gesture events. Block them so only the in-app canvas zoom happens.
+['gesturestart', 'gesturechange', 'gestureend'].forEach(ev =>
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
+// Also stop the double-tap-to-zoom on the page chrome.
+document.addEventListener('dblclick', (e) => { if (!e.target.closest('input, textarea')) e.preventDefault(); }, { passive: false });
+
 const activePointers = new Map();
 let pinchStart = null;
 (function wireTouchCanvas() {
@@ -4442,7 +4460,7 @@ document.getElementById('zoom-in').addEventListener('click', () => {
   scheduleSave();
 });
 document.getElementById('zoom-out').addEventListener('click', () => {
-  state.zoom = Math.max(0.3, state.zoom / 1.2);
+  state.zoom = Math.max(0.12, state.zoom / 1.2);
   renderFloor();
   scheduleSave();
 });
