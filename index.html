@@ -360,9 +360,9 @@
   .si-xlink { stroke-width: 2; stroke-dasharray: 2 3; fill: none; opacity: 0.85; }   /* cross-floor stub */
   .sw-xfloor {                                          /* cross-floor pair chip (e.g. "↑1·C2") */
     position: absolute; transform: translateY(-50%);
-    font-size: 8.5px; font-weight: 700; line-height: 1; letter-spacing: 0.01em;
+    font-size: 12px; font-weight: 700; line-height: 1; letter-spacing: 0.01em;
     color: var(--cc, #2563eb); background: var(--paper);
-    border: 1px solid var(--cc, #2563eb); border-radius: 4px; padding: 2px 3px;
+    border: 1.5px solid var(--cc, #2563eb); border-radius: 6px; padding: 4px 6px;
     white-space: nowrap; pointer-events: none; z-index: 8; box-shadow: var(--shadow);
   }
   .si-rows { display: flex; flex-direction: column; gap: 8px; }
@@ -3714,7 +3714,7 @@ function renderSwitches() {
       + (nSel ? ' · ' + nSel + ' selected' : '') + (xlinks.length ? ' · cross-floor → ' + xlinks.map(x => x.ref).join(', ') : '');
     layer.appendChild(pin);
     xlinks.forEach((xl, k) => {
-      const bx = px + 17, by = py + (k - (xlinks.length - 1) / 2) * 16;
+      const bx = px + 20, by = py + (k - (xlinks.length - 1) / 2) * 24;
       stubs += `<line class="si-xlink" style="stroke:${xl.color}" x1="${px}" y1="${py}" x2="${bx - 3}" y2="${by}" vector-effect="non-scaling-stroke"/>`;
       const chip = document.createElement('div');
       chip.className = 'sw-xfloor';
