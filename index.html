@@ -357,6 +357,14 @@
   .sw-pin.sel { outline: 3px solid #93c5fd; outline-offset: 2px; z-index: 9; }  /* open in inspector */
   .sw-pin:active { cursor: grabbing; }
   .si-link { stroke: #6d28d9; stroke-width: 2.5; stroke-dasharray: 5 4; fill: none; opacity: 0.85; stroke-linecap: round; }
+  .si-xlink { stroke-width: 2; stroke-dasharray: 2 3; fill: none; opacity: 0.85; }   /* cross-floor stub */
+  .sw-xfloor {                                          /* cross-floor pair chip (e.g. "↑1·C2") */
+    position: absolute; transform: translateY(-50%);
+    font-size: 8.5px; font-weight: 700; line-height: 1; letter-spacing: 0.01em;
+    color: var(--cc, #2563eb); background: var(--paper);
+    border: 1px solid var(--cc, #2563eb); border-radius: 4px; padding: 2px 3px;
+    white-space: nowrap; pointer-events: none; z-index: 8; box-shadow: var(--shadow);
+  }
   .si-rows { display: flex; flex-direction: column; gap: 8px; }
   .si-row { border: 1px solid var(--border); border-radius: 7px; padding: 8px; background: var(--paper-dim); }
   .si-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
@@ -3496,6 +3504,18 @@ function circuitMembers(circuitId) {
   });
   return out;
 }
+// Short floor code for cross-floor references: Basement→"B", 1st Floor→"1", 2nd→"2"…
+function floorCode(f) {
+  if (!f) return '?';
+  const nm = String(f.name || f.id);
+  const m = nm.match(/\d+/);
+  return m ? m[0] : nm.charAt(0).toUpperCase();
+}
+// A circuit member's reference, floor-prefixed when it sits on a different floor than
+// the context floor — so a cross-floor pair reads unambiguously (e.g. "1·C2").
+function memberRef(m, ctxFloorId) {
+  return (ctxFloorId != null && String(m.floor.id) === String(ctxFloorId)) ? m.ref : (floorCode(m.floor) + '·' + m.ref);
+}
 function touchSwitchGang(sw) { const h = findSwitchById(sw.id); if (h) touch(h.gang); }
 // Merge `sw` (and anyone already in its circuit) into `targetSw`'s circuit, so they
 // all control the same light. Creates a circuit on the target if it has none yet.
@@ -3662,22 +3682,50 @@ function renderSwitches() {
       lines += `<line class="si-link" style="stroke:${color}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"><title>${winEscHtml(title)}</title></line>`;
     }
   });
-  svg.innerHTML = lines;
-  // Pins (gang letter; green when any of the gang's switches are picked for export).
+  // Pins (gang letter; green when any of the gang's switches are picked for export),
+  // plus a small labelled stub for every cross-floor pair (there's no pin to link to
+  // on this floor, so the stub stands in for the strand).
   layer.innerHTML = '';
   const selSet = exportSelSet();
+  let stubs = '';
   list.forEach((g, gi) => {
+    const px = f.offsetX + g.x * f.pxPerFt, py = f.offsetY + g.y * f.pxPerFt;
     const pin = document.createElement('div');
     const picked = g.switches.some(sw => sw.type !== 'blank' && selSet.has(String(sw.id)));
     pin.className = 'sw-pin' + (g.id === state.selectedSwitchId ? ' sel' : '') + (picked ? ' selected' : '');
     pin.dataset.id = g.id;
-    pin.style.left = (f.offsetX + g.x * f.pxPerFt) + 'px';
-    pin.style.top  = (f.offsetY + g.y * f.pxPerFt) + 'px';
+    pin.style.left = px + 'px';
+    pin.style.top  = py + 'px';
     pin.textContent = gangLetter(gi);
     const nSel = gangSelectableSwitches(g).filter(sw => selSet.has(String(sw.id))).length;
-    pin.title = 'Gang ' + gangLetter(gi) + (g.label ? ' · ' + g.label : '') + ' · ' + g.switches.length + '-gang' + (nSel ? ' · ' + nSel + ' selected' : '');
+    // Cross-floor circuit partners (unique by ref) — shown as stub + floor-coded chip.
+    const seenX = new Set(); const xlinks = [];
+    g.switches.forEach(sw => {
+      if (sw.circuit == null) return;
+      const color = colorMap[String(sw.circuit)] || CIRCUIT_COLORS[0];
+      circuitMembers(sw.circuit).forEach(m => {
+        if (String(m.floor.id) === String(state.currentFloor)) return;   // same floor → already a strand
+        const ref = floorCode(m.floor) + '·' + m.ref;
+        if (seenX.has(ref)) return; seenX.add(ref);
+        xlinks.push({ ref, up: (m.floor.order || 0) > (f.order || 0), color });
+      });
+    });
+    pin.title = 'Gang ' + gangLetter(gi) + (g.label ? ' · ' + g.label : '') + ' · ' + g.switches.length + '-gang'
+      + (nSel ? ' · ' + nSel + ' selected' : '') + (xlinks.length ? ' · cross-floor → ' + xlinks.map(x => x.ref).join(', ') : '');
     layer.appendChild(pin);
+    xlinks.forEach((xl, k) => {
+      const bx = px + 17, by = py + (k - (xlinks.length - 1) / 2) * 16;
+      stubs += `<line class="si-xlink" style="stroke:${xl.color}" x1="${px}" y1="${py}" x2="${bx - 3}" y2="${by}" vector-effect="non-scaling-stroke"/>`;
+      const chip = document.createElement('div');
+      chip.className = 'sw-xfloor';
+      chip.style.left = bx + 'px'; chip.style.top = by + 'px';
+      chip.style.setProperty('--cc', xl.color);
+      chip.textContent = (xl.up ? '↑' : '↓') + xl.ref;
+      chip.title = 'Cross-floor pair → ' + xl.ref;
+      layer.appendChild(chip);
+    });
   });
+  svg.innerHTML = lines + stubs;
 }
 
 function renderSwitchInspector(container, force) {
@@ -3693,7 +3741,8 @@ function renderSwitchInspector(container, force) {
   for (const fl of getAllFloors()) {
     (state.switches[fl.id] || []).forEach((g, ggi) => {
       if (String(g.id) === String(loc.id)) return;          // can't pair within the same gang
-      g.switches.forEach((sw, si) => { if (sw.type === 'blank') return; units.push({ id: sw.id, ref: gangLetter(ggi) + (si + 1), label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }); });  // a blank can't be a pair target
+      const cross = String(fl.id) !== String(state.currentFloor);
+      g.switches.forEach((sw, si) => { if (sw.type === 'blank') return; const baseRef = gangLetter(ggi) + (si + 1); units.push({ id: sw.id, ref: cross ? (floorCode(fl) + '·' + baseRef) : baseRef, label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }); });  // a blank can't be a pair target; cross-floor refs are floor-prefixed
     });
   }
   const rows = loc.switches.map((sw, i) => {
@@ -3722,7 +3771,7 @@ function renderSwitchInspector(container, force) {
       </div>
       ${cid != null ? `<div class="si-circuit" style="--cc:${color}">
         <span class="si-cdot"></span>
-        <span class="si-ctext">${members.length}-way: ${winEscHtml(members.map(m => m.ref).join(' · '))}</span>
+        <span class="si-ctext">${members.length}-way: ${winEscHtml(members.map(m => memberRef(m, state.currentFloor)).join(' · '))}</span>
         <button class="si-unpair" data-unpair="${i}" title="Take ${winEscHtml(ref)} out of this circuit">unpair</button>
       </div>` : ''}
       <select class="si-pairsel" data-pair="${i}">
@@ -3751,6 +3800,7 @@ function renderSwitchInspector(container, force) {
         <li><b>Normal / Dimmer</b> per switch.</li>
         <li><b>3-way / 4-way:</b> a switch's <i>pair</i> menu links it to another switch into a <b>circuit</b> (all controlling one light). Add more switches to grow it — each circuit gets its own colour, and every strand of that circuit matches.</li>
         <li>It's the <b>switches</b> that are paired, not the gangs — a strand links the two pins only to show it, but really connects (say) <b>A1 ↔ B1</b>. Hover a strand to see which switches. A gang with switches in two circuits shows two differently-coloured strands.</li>
+        <li><b>Cross-floor pairs</b> are written with a floor code (Basement = <b>B</b>, 1st = <b>1</b>, …), e.g. <b>1·A1</b> = the 1st floor's A1. On the plan they show as a small <b>↑/↓</b> chip beside the pin (↑ = a floor above, ↓ below).</li>
         <li>Use <i>unpair</i> to drop a switch from its circuit.</li>
       </ul>
     </details>`;
@@ -3832,7 +3882,7 @@ function exportSwitchesCsv(opts) {
         if (selectedOnly && !selSet.has(String(sw.id))) return;
         let circuit = '';
         if (sw.circuit != null) {
-          const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => m.ref);
+          const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => memberRef(m, f.id));
           if (others.length) circuit = (others.length + 1) + '-way with ' + others.join(' + ');
         }
         rows.push([f.name || f.id, letter, s.label, letter + (i + 1), sw.control || '', switchTypeLabel(sw.type), sw.smart ? 'Yes' : '', sw.ledStrip ? 'Yes' : '', circuit]);
@@ -4040,7 +4090,7 @@ function renderSummary() {
           .map(({ sw, j }) => {
             let circ = '';
             if (sw.circuit != null) {
-              const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => m.ref);
+              const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => memberRef(m, f.id));
               if (others.length) circ = ` · <span style="color:${colorMap[String(sw.circuit)] || CIRCUIT_COLORS[0]}">●</span> ${(others.length + 1)}-way: ${winEscHtml(others.join(' · '))}`;
             }
             const flags = switchFlags(sw);
