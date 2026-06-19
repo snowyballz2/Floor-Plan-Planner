@@ -3520,6 +3520,10 @@ function renderSwitches() {
   // circuit gets a distinct colour, so a gang in two circuits shows two colours.
   svg.setAttribute('width', f.w); svg.setAttribute('height', f.h); svg.setAttribute('viewBox', `0 0 ${f.w} ${f.h}`);
   const colorMap = circuitColorMap();
+  const gangIdx = {}; list.forEach((g, i) => { gangIdx[g.id] = i; });
+  // The specific switch(es) of gang `g` that belong to circuit `cid` — the strand
+  // represents these switches being paired, NOT the gangs themselves.
+  const refsIn = (g, cid) => g.switches.map((sw, si) => (sw.circuit != null && String(sw.circuit) === String(cid)) ? gangLetter(gangIdx[g.id]) + (si + 1) : null).filter(Boolean);
   const pinsByCircuit = {};                          // circuitId → distinct gangs on this floor, in display order
   list.forEach(g => {
     const seen = new Set();
@@ -3538,7 +3542,8 @@ function renderSwitches() {
       const a = gangs[i], b = gangs[i + 1];
       const x1 = f.offsetX + a.x * f.pxPerFt, y1 = f.offsetY + a.y * f.pxPerFt;
       const x2 = f.offsetX + b.x * f.pxPerFt, y2 = f.offsetY + b.y * f.pxPerFt;
-      lines += `<line class="si-link" style="stroke:${color}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
+      const title = refsIn(a, cid).join(' / ') + ' ↔ ' + refsIn(b, cid).join(' / '); // the actual paired switches
+      lines += `<line class="si-link" style="stroke:${color}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"><title>${winEscHtml(title)}</title></line>`;
     }
   });
   svg.innerHTML = lines;
@@ -3620,7 +3625,8 @@ function renderSwitchInspector(container, force) {
         <li>Switches in a gang are numbered <b>${letter}1, ${letter}2…</b> top to bottom.</li>
         <li><b>Normal / Dimmer</b> per switch.</li>
         <li><b>3-way / 4-way:</b> a switch's <i>pair</i> menu links it to another switch into a <b>circuit</b> (all controlling one light). Add more switches to grow it — each circuit gets its own colour, and every strand of that circuit matches.</li>
-        <li>A gang in two circuits shows two differently-coloured strands. Use <i>unpair</i> to drop a switch from its circuit.</li>
+        <li>It's the <b>switches</b> that are paired, not the gangs — a strand links the two pins only to show it, but really connects (say) <b>A1 ↔ B1</b>. Hover a strand to see which switches. A gang with switches in two circuits shows two differently-coloured strands.</li>
+        <li>Use <i>unpair</i> to drop a switch from its circuit.</li>
       </ul>
     </details>`;
   wireSwitchInspector(container, loc);
