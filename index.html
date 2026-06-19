@@ -312,7 +312,7 @@
   .wi-seg button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 7px 6px; font: inherit; font-size: 12px; cursor: pointer; }
   .wi-seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
   /* Switch type segmented control uses the switch (purple) accent. */
-  .si-row .wi-seg button.on { background: #6d28d9; }
+  .si-row .wi-seg button.on { background: #2563eb; }
   /* Independent feature toggles (Smart / LED Strip) — multi-select, can combine with the type. */
   .wi-flags { display: flex; gap: 6px; margin-top: 7px; }
   .wi-flag { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink-soft); padding: 6px; font: inherit; font-size: 12px; cursor: pointer; }
@@ -349,17 +349,18 @@
     min-width: 22px; height: 22px; padding: 0 5px; border-radius: 5px;
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; color: #fff;
-    background: #6d28d9; border: 2px solid rgba(255,255,255,0.9);
+    background: #2563eb; border: 2px solid rgba(255,255,255,0.9);
     box-shadow: var(--shadow); cursor: grab; pointer-events: auto;
     font-family: inherit; user-select: none; touch-action: none; white-space: nowrap;
   }
-  .sw-pin.sel { outline: 3px solid #a78bfa; outline-offset: 2px; z-index: 9; }
+  .sw-pin.selected { background: #16a34a; }            /* picked for export — green */
+  .sw-pin.sel { outline: 3px solid #93c5fd; outline-offset: 2px; z-index: 9; }  /* open in inspector */
   .sw-pin:active { cursor: grabbing; }
   .si-link { stroke: #6d28d9; stroke-width: 2.5; stroke-dasharray: 5 4; fill: none; opacity: 0.85; stroke-linecap: round; }
   .si-rows { display: flex; flex-direction: column; gap: 8px; }
   .si-row { border: 1px solid var(--border); border-radius: 7px; padding: 8px; background: var(--paper-dim); }
   .si-row-top { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
-  .si-n { min-width: 24px; height: 20px; padding: 0 5px; border-radius: 4px; background: #6d28d9; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .si-n { min-width: 24px; height: 20px; padding: 0 5px; border-radius: 4px; background: #2563eb; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
   .si-row-top input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); }
   .si-row-rm { border: none; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
   .si-row-rm:hover { color: var(--danger); }
@@ -370,8 +371,8 @@
   .si-unpair { border: 1px solid color-mix(in srgb, var(--cc, #6d28d9) 45%, transparent); background: transparent; color: var(--cc, #6d28d9); cursor: pointer; font: inherit; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; }
   .si-unpair:hover { background: color-mix(in srgb, var(--cc, #6d28d9) 12%, transparent); }
   .si-add { width: 100%; font: inherit; font-size: 12.5px; padding: 7px; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--ink-soft); cursor: pointer; margin-top: 8px; }
-  .si-add:hover { border-color: #6d28d9; color: #6d28d9; }
-  .wi-badge.switch { background: #6d28d9; }
+  .si-add:hover { border-color: #2563eb; color: #2563eb; }
+  .wi-badge.switch { background: #2563eb; }
 
   /* ---- Summary modal (windows + switches schedule) ---- */
   .sum-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -384,6 +385,27 @@
   .sum-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
   .sum-count { font-size: 12px; color: var(--ink-faint); }
   .sum-body { max-height: 56vh; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--paper-dim); padding: 6px; }
+  /* ---- Switch export-selection ---- */
+  #select-mode-btn.on { background: #16a34a !important; border-color: #16a34a !important; color: #fff !important; }
+  body:not(.view-switches) #select-mode-btn { display: none !important; }   /* only meaningful on the switch plan */
+  body.select-mode #select-mode-btn { display: none !important; }           /* the bar drives accept/cancel */
+  #select-bar { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); z-index: 200;
+    display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 20px);
+    background: #065f46; color: #ecfdf5; padding: 9px 8px 9px 15px; border-radius: 12px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
+  #select-bar[hidden] { display: none; }
+  #select-bar .sb-dot { width: 10px; height: 10px; border-radius: 50%; background: #34d399; flex: 0 0 auto; box-shadow: 0 0 0 3px rgba(52,211,153,0.3); }
+  #select-bar button { border: 1px solid rgba(255,255,255,0.5); background: transparent; color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 14px; border-radius: 7px; cursor: pointer; }
+  #select-bar #select-accept { background: #16a34a; border-color: #16a34a; }
+  #select-bar #select-cancel:hover { background: rgba(255,255,255,0.14); }
+  body.select-mode .controls { opacity: 0.4; pointer-events: none; }   /* lock editing while selecting */
+  body.select-mode #canvas-wrapper { cursor: pointer; }
+  .sum-pick { display: inline-flex; align-items: center; margin-right: 7px; vertical-align: middle; flex: 0 0 auto; }
+  .sum-pick input { width: 15px; height: 15px; accent-color: #16a34a; cursor: pointer; margin: 0; }
+  .sum-kv.picked { background: rgba(22,163,74,0.10); border-radius: 5px; }
+  .sum-kv.picked > b { color: #15803d; }
+  #sum-export-sel { border-color: #16a34a !important; color: #15803d !important; }
+  #sum-export-sel:hover { background: rgba(22,163,74,0.10); }
+  #sum-export-sel:disabled { opacity: 0.4; cursor: default; }
   .sum-floor { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); margin: 8px 4px 4px; }
   .sum-item { background: var(--paper); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 5px; }
   .sum-item > summary { list-style: none; cursor: pointer; padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
@@ -392,7 +414,7 @@
   .sum-item[open] > summary::before { content: '▾'; }
   .sum-num { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex: 0 0 auto; }
   .sum-num.win { background: var(--accent); border-radius: 50%; }
-  .sum-num.sw { background: #6d28d9; border-radius: 4px; }
+  .sum-num.sw { background: #2563eb; border-radius: 4px; }
   .sum-label { font-weight: 600; font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sum-meta { margin-left: auto; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; text-align: right; flex: 0 0 auto; }
   .sum-warn { color: var(--danger); }
@@ -412,7 +434,7 @@
   .view-tabs button:hover { background: var(--paper-dim); color: var(--ink); }
   .view-tabs button.active { background: var(--accent); color: #fff; }
   .view-tabs button[data-view="furniture"].active { background: var(--ink); }
-  .view-tabs button[data-view="switches"].active { background: #6d28d9; }
+  .view-tabs button[data-view="switches"].active { background: #2563eb; }
   /* The old per-layer toggle buttons are replaced by the view tabs. */
   #window-add-btn, #switch-add-btn { display: none !important; }
   /* Furniture-only tools hide outside Furniture view. */
@@ -507,8 +529,8 @@
     color: #fff !important;
   }
   #switch-add-btn.active {
-    background: #6d28d9 !important;
-    border-color: #6d28d9 !important;
+    background: #2563eb !important;
+    border-color: #2563eb !important;
     color: #fff !important;
   }
   /* Small dimension callout used on shape edges (L-shape arm dims). */
@@ -901,7 +923,7 @@
     .view-tabs .vt-lb { font-size: 11px; letter-spacing: 0.01em; }
     .view-tabs button[data-view="furniture"].active { color: var(--ink); border-top-color: var(--ink); background: transparent; }
     .view-tabs button[data-view="windows"].active { color: var(--accent); border-top-color: var(--accent); background: transparent; }
-    .view-tabs button[data-view="switches"].active { color: #6d28d9; border-top-color: #6d28d9; background: transparent; }
+    .view-tabs button[data-view="switches"].active { color: #2563eb; border-top-color: #2563eb; background: transparent; }
 
     /* ---- canvas fills the middle, clears the bottom bar ---- */
     main { position: relative; padding-bottom: calc(46px + env(safe-area-inset-bottom)); }
@@ -993,6 +1015,7 @@
 
   <div class="header-spacer"></div>
   <div class="right-actions">
+    <button id="select-mode-btn" title="Select switches for export (locks editing)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">✓</span><span>Select</span></button>
     <button id="summary-open-btn" title="Window &amp; switch schedule" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">📋</span><span>Summary</span></button>
     <button id="sync-open-btn" title="Cloud sync" style="background:transparent;border:1px solid var(--border);color:var(--ink-soft);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;">
       <span class="ra-ic" id="sync-btn-icon">↻</span>
@@ -1001,6 +1024,14 @@
     </button>
   </div>
 </header>
+
+<div id="select-bar" hidden>
+  <span class="sb-dot"></span>
+  <span id="select-bar-text">Tap switches to select for export</span>
+  <span style="flex:1"></span>
+  <button id="select-cancel" type="button">Cancel</button>
+  <button id="select-accept" type="button">Accept</button>
+</div>
 
 <main>
   <aside class="sidebar" id="sidebar">
@@ -1243,6 +1274,7 @@
       <span style="flex:1"></span>
       <button id="sum-expand">Expand all</button>
       <button id="sum-collapse">Collapse all</button>
+      <button id="sum-export-sel" hidden>⤓ Export selected</button>
       <button id="sum-csv">⤓ CSV</button>
     </div>
     <div class="sum-body" id="sum-body"></div>
@@ -1461,6 +1493,11 @@ const state = {
   view: 'furniture',
   // Per-layer visibility toggles (independent of the active view).
   layerVis: { furniture: true, windows: true, switches: true },
+  // Switches picked for export (per-device, not synced). selectMode + snapshot are
+  // the transactional floor-plan selection mode (snapshot lets Cancel revert).
+  exportSel: [],
+  selectMode: false,
+  selectSnapshot: null,
 };
 
 // Globally-unique item IDs (random within Number.MAX_SAFE_INTEGER). Avoids
@@ -1523,6 +1560,7 @@ async function save() {
       labelsVisible: state.labelsVisible,
       view: state.view,
       layerVis: state.layerVis,
+      exportSel: state.exportSel,
     };
     if (window.storage && window.storage.set) {
       await window.storage.set(STORAGE_KEY, JSON.stringify(data));
@@ -1638,6 +1676,7 @@ async function load() {
     if (data.labelsVisible === false) state.labelsVisible = false;
     if (data.view) state.view = data.view;
     if (data.layerVis) state.layerVis = { furniture: true, windows: true, switches: true, ...data.layerVis };
+    if (Array.isArray(data.exportSel)) state.exportSel = data.exportSel.map(String);
     // Migration: stamp existing items lacking _ts so sync LWW treats them as
     // "ancient" (any timestamped change overrides them); ensure tombstone maps
     // exist for every floor.
@@ -2813,7 +2852,7 @@ let pinchStart = null;
       return;
     }
     // A tap candidate for placement/deselect — not on a draggable element, not while measuring/labelling.
-    if (state.measureMode || state.labelMode) { tap = null; return; }
+    if (state.measureMode || state.labelMode || state.selectMode) { tap = null; return; }
     if (e.target.closest('.furniture, .win-pin, .sw-pin, .room-label, .m-handle')) { tap = null; return; }
     tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false };
   });
@@ -3341,6 +3380,27 @@ const SWITCH_TYPES = ['normal', 'dimmer', 'blank'];
 function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : 'Switch'; }
 function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); return o; }
 
+// ---- Export selection: which individual switches are picked for the export table.
+// Per-device (saved locally, not synced). Blanks can't be selected.
+function exportSelSet() { return new Set((state.exportSel || []).map(String)); }
+function isSwSelected(id) { return exportSelSet().has(String(id)); }
+function setSwSelected(id, on) {
+  const set = exportSelSet();
+  if (on) set.add(String(id)); else set.delete(String(id));
+  state.exportSel = [...set];
+}
+function gangSelectableSwitches(g) { return g.switches.filter(sw => sw.type !== 'blank'); }
+function gangAnySelected(g) { const set = exportSelSet(); return gangSelectableSwitches(g).some(sw => set.has(String(sw.id))); }
+// Toggle a whole gang: any picked → clear them all; otherwise pick all its (non-blank) switches.
+function toggleGangSelection(g) {
+  const sel = gangSelectableSwitches(g);
+  const any = gangAnySelected(g);
+  const set = exportSelSet();
+  sel.forEach(sw => { if (any) set.delete(String(sw.id)); else set.add(String(sw.id)); });
+  state.exportSel = [...set];
+}
+function selectedSwitchCount() { return (state.exportSel || []).length; }
+
 function currentSwitches() { return state.switches[state.currentFloor] || []; }
 function findSwitch(id) { return currentSwitches().find(s => s.id === id); }
 
@@ -3561,16 +3621,19 @@ function renderSwitches() {
     }
   });
   svg.innerHTML = lines;
-  // Pins (show the gang letter A, B, C…).
+  // Pins (gang letter; green when any of the gang's switches are picked for export).
   layer.innerHTML = '';
+  const selSet = exportSelSet();
   list.forEach((g, gi) => {
     const pin = document.createElement('div');
-    pin.className = 'sw-pin' + (g.id === state.selectedSwitchId ? ' sel' : '');
+    const picked = g.switches.some(sw => sw.type !== 'blank' && selSet.has(String(sw.id)));
+    pin.className = 'sw-pin' + (g.id === state.selectedSwitchId ? ' sel' : '') + (picked ? ' selected' : '');
     pin.dataset.id = g.id;
     pin.style.left = (f.offsetX + g.x * f.pxPerFt) + 'px';
     pin.style.top  = (f.offsetY + g.y * f.pxPerFt) + 'px';
     pin.textContent = gangLetter(gi);
-    pin.title = 'Gang ' + gangLetter(gi) + (g.label ? ' · ' + g.label : '') + ' · ' + g.switches.length + '-gang';
+    const nSel = gangSelectableSwitches(g).filter(sw => selSet.has(String(sw.id))).length;
+    pin.title = 'Gang ' + gangLetter(gi) + (g.label ? ' · ' + g.label : '') + ' · ' + g.switches.length + '-gang' + (nSel ? ' · ' + nSel + ' selected' : '');
     layer.appendChild(pin);
   });
 }
@@ -3716,12 +3779,15 @@ function wireSwitchInspector(container, loc) {
   if (csv) csv.addEventListener('click', exportSwitchesCsv);
 }
 
-function exportSwitchesCsv() {
+function exportSwitchesCsv(opts) {
+  const selectedOnly = !!(opts && opts.selectedOnly);
+  const selSet = exportSelSet();
   const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Smart', 'LED Strip', 'Circuit']];
   for (const f of getAllFloors()) {
     (state.switches[f.id] || []).forEach((s, gi) => {
       const letter = gangLetter(gi);
       s.switches.forEach((sw, i) => {
+        if (selectedOnly && !selSet.has(String(sw.id))) return;
         let circuit = '';
         if (sw.circuit != null) {
           const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => m.ref);
@@ -3731,14 +3797,15 @@ function exportSwitchesCsv() {
       });
     });
   }
-  if (rows.length === 1) { alert('No switches added yet. Turn on the 💡 Switches tool and click the plan to drop one.'); return; }
+  if (rows.length === 1) { alert(selectedOnly ? 'No switches selected yet. Tick switches in the Summary, or use “Select” on the floor plan.' : 'No switches added yet. Turn on the 💡 Switches tool and click the plan to drop one.'); return; }
   const csv = rows.map(r => r.map(c => { c = String(c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'switch-schedule.csv';
+  const a = document.createElement('a'); a.href = url; a.download = selectedOnly ? 'selected-switches.csv' : 'switch-schedule.csv';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+function exportSelectedSwitchesCsv() { exportSwitchesCsv({ selectedOnly: true }); }
 
 // Switches button toggles placement mode (mutually exclusive with measure/label/window).
 (function wireSwitchButton() {
@@ -3769,6 +3836,12 @@ let swDrag = null;
     if (!el) return;
     const s = findSwitch(+el.dataset.id);
     if (!s) return;
+    if (state.selectMode) {                       // selection mode: tap toggles the gang, no editing/drag
+      toggleGangSelection(s);
+      renderSwitches(); updateSelectBar();
+      e.stopPropagation(); e.preventDefault();
+      return;
+    }
     selectSwitch(s.id);
     const rect = els.canvas.getBoundingClientRect();
     const ft = getMouseFt(e, rect);
@@ -3791,6 +3864,50 @@ let swDrag = null;
   });
   layer.addEventListener('pointerup', () => { if (swDrag) { if (!swDrag.moved) openPanelOnMobile(); swDrag = null; scheduleSave(); } });
   layer.addEventListener('pointercancel', () => { if (swDrag) { swDrag = null; scheduleSave(); } });
+})();
+
+// ============================================================
+// SWITCH EXPORT-SELECTION MODE (floor plan)
+// ============================================================
+// A transactional mode: enter it from the top bar, tap pins to pick switches for
+// the export table, then Accept (keep) or Cancel (revert to the snapshot). While
+// in this mode all gang/switch editing is locked.
+function updateSelectBar() {
+  const el = document.getElementById('select-bar-text');
+  if (!el) return;
+  const n = selectedSwitchCount();
+  el.textContent = n ? (n + ' switch' + (n !== 1 ? 'es' : '') + ' selected — tap pins to toggle') : 'Tap switch pins to select them for export';
+}
+function enterSelectMode() {
+  if (state.selectMode) return;
+  if (state.view !== 'switches') applyView('switches');
+  if (state.layerVis && !state.layerVis.switches) { state.layerVis.switches = true; applyLayerVis(); }
+  // turn off any active editing tool
+  state.switchMode = false; window.__applySwitchMode && window.__applySwitchMode();
+  state.selectMode = true;
+  state.selectSnapshot = [...(state.exportSel || [])];
+  state.selectedSwitchId = null;                 // close any open inspector
+  document.body.classList.add('select-mode');
+  document.getElementById('select-bar').hidden = false;
+  updateSelectBar();
+  renderSwitches(); renderFurniture();
+}
+function exitSelectMode() {
+  state.selectMode = false;
+  state.selectSnapshot = null;
+  document.body.classList.remove('select-mode');
+  const bar = document.getElementById('select-bar'); if (bar) bar.hidden = true;
+  renderSwitches();
+}
+function acceptSelectMode() { exitSelectMode(); scheduleSave(); }
+function cancelSelectMode() { state.exportSel = state.selectSnapshot || []; exitSelectMode(); scheduleSave(); if (summaryModalBg && summaryModalBg.classList.contains('open')) renderSummary(); }
+(function wireSelectMode() {
+  const btn = document.getElementById('select-mode-btn');
+  if (btn) btn.addEventListener('click', enterSelectMode);
+  const acc = document.getElementById('select-accept');
+  if (acc) acc.addEventListener('click', acceptSelectMode);
+  const can = document.getElementById('select-cancel');
+  if (can) can.addEventListener('click', cancelSelectMode);
 })();
 
 // ============================================================
@@ -3865,7 +3982,12 @@ function renderSummary() {
             if (others.length) circ = ` · <span style="color:${colorMap[String(sw.circuit)] || CIRCUIT_COLORS[0]}">●</span> ${(others.length + 1)}-way: ${winEscHtml(others.join(' · '))}`;
           }
           const flags = switchFlags(sw);
-          return `<div class="sum-kv"><b>${letter}${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${switchTypeLabel(sw.type)}${flags.length ? ' · ' + winEscHtml(flags.join(' · ')) : ''}${circ}</span></div>`;
+          const selectable = sw.type !== 'blank';
+          const picked = selectable && isSwSelected(sw.id);
+          const cb = selectable
+            ? `<label class="sum-pick" title="Select ${letter}${j + 1} for export"><input type="checkbox" data-pick="${sw.id}" ${picked ? 'checked' : ''}></label>`
+            : `<span class="sum-pick" style="width:15px"></span>`;
+          return `<div class="sum-kv${picked ? ' picked' : ''}">${cb}<b>${letter}${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${switchTypeLabel(sw.type)}${flags.length ? ' · ' + winEscHtml(flags.join(' · ')) : ''}${circ}</span></div>`;
         }).join('');
         html += `<details class="sum-item">
           <summary><span class="sum-num sw">${letter}</span><span class="sum-label">${winEscHtml(s.label)}</span><span class="sum-meta">${meta}</span></summary>
@@ -3880,6 +4002,24 @@ function renderSummary() {
   body.querySelectorAll('.sum-locate').forEach(b => b.addEventListener('click', () => {
     summaryLocate(b.dataset.kind, b.dataset.floor, isNaN(+b.dataset.id) ? b.dataset.id : +b.dataset.id);
   }));
+  // Export-selection: checkboxes (switches tab only) + the Export-selected button.
+  const exBtn = document.getElementById('sum-export-sel');
+  if (exBtn) exBtn.hidden = summaryTab !== 'switches';
+  updateSummarySelUI();
+  body.querySelectorAll('[data-pick]').forEach(cb => cb.addEventListener('change', () => {
+    setSwSelected(cb.dataset.pick, cb.checked);
+    const row = cb.closest('.sum-kv'); if (row) row.classList.toggle('picked', cb.checked);
+    scheduleSave();
+    renderSwitches();          // reflect on the floor-plan pins
+    updateSummarySelUI();
+  }));
+}
+function updateSummarySelUI() {
+  const exBtn = document.getElementById('sum-export-sel');
+  if (!exBtn) return;
+  const n = selectedSwitchCount();
+  exBtn.disabled = n === 0;
+  exBtn.textContent = n ? `⤓ Export selected (${n})` : '⤓ Export selected';
 }
 
 function summaryLocate(kind, floorId, id) {
@@ -3897,6 +4037,7 @@ document.querySelectorAll('.sum-tab').forEach(b => b.addEventListener('click', (
 document.getElementById('sum-expand').addEventListener('click', () => document.querySelectorAll('#sum-body .sum-item').forEach(d => d.open = true));
 document.getElementById('sum-collapse').addEventListener('click', () => document.querySelectorAll('#sum-body .sum-item').forEach(d => d.open = false));
 document.getElementById('sum-csv').addEventListener('click', () => summaryTab === 'windows' ? exportWindowsCsv() : exportSwitchesCsv());
+document.getElementById('sum-export-sel').addEventListener('click', exportSelectedSwitchesCsv);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && summaryModalBg.classList.contains('open')) summaryModalBg.classList.remove('open'); });
 
 // ============================================================
