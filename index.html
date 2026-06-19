@@ -360,6 +360,7 @@
     box-shadow: var(--shadow); cursor: grab; pointer-events: auto;
     font-family: inherit; user-select: none; touch-action: none; white-space: nowrap;
   }
+  .sw-pin.remote { background: #d97706; }              /* all-remote gang — amber (before .selected so green wins) */
   .sw-pin.selected { background: #16a34a; }            /* picked for export — green */
   .sw-pin.hub { width: 24px; min-width: 24px; height: 24px; padding: 0; border-radius: 50%; background: #0891b2; font-size: 14px; }  /* hub = teal circle + ◉ */
   .sw-pin.sel { outline: 3px solid #93c5fd; outline-offset: 2px; z-index: 9; }  /* open in inspector */
@@ -3445,6 +3446,8 @@ const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote'];
 function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : 'Switch'; }
 // A pin is either a switch GANG (lettered A,B,C…) or a standalone HUB device (◉).
 function isHubGang(g) { return !!g && g.kind === 'hub'; }
+// A gang whose (non-blank) switches are all "remote" reads as a remote pin → amber.
+function gangIsAllRemote(g) { if (!g || isHubGang(g)) return false; const real = g.switches.filter(sw => sw.type !== 'blank'); return real.length > 0 && real.every(sw => sw.type === 'remote'); }
 function floorGangs(floorId) { return (state.switches[floorId] || []).filter(g => !isHubGang(g)); }   // hubs don't take a letter
 function gangLetterOf(floorId, gang) { const i = floorGangs(floorId).indexOf(gang); return i >= 0 ? gangLetter(i) : '?'; }
 function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); if (sw && sw.nightMode) o.push('Night'); return o; }
@@ -3730,7 +3733,7 @@ function renderSwitches() {
       return;
     }
     const picked = g.switches.some(sw => sw.type !== 'blank' && selSet.has(String(sw.id)));
-    pin.className = 'sw-pin' + editSel + (picked ? ' selected' : '');
+    pin.className = 'sw-pin' + editSel + (gangIsAllRemote(g) ? ' remote' : '') + (picked ? ' selected' : '');
     const letter = gangLetterOf(f.id, g);
     pin.textContent = letter;
     const nSel = gangSelectableSwitches(g).filter(sw => selSet.has(String(sw.id))).length;
@@ -3773,13 +3776,17 @@ function renderSwitchInspector(container, force) {
   const letter = gangLetterOf(state.currentFloor, loc);
   const isHub = isHubGang(loc);
   const colorMap = circuitColorMap();
-  // Every switch in every OTHER (non-hub) gang across floors is a possible circuit partner.
+  // Possible circuit partners: every switch in every other (non-hub) gang. Ordered
+  // with THIS floor first, then Basement → up; each option is floor-coded (e.g.
+  // "2·A1") so you can always tell which floor a partner is on.
+  const all = getAllFloors();
+  const orderedFloors = [...all.filter(fl => String(fl.id) === String(state.currentFloor)),
+                         ...all.filter(fl => String(fl.id) !== String(state.currentFloor))];
   const units = [];
-  for (const fl of getAllFloors()) {
+  for (const fl of orderedFloors) {
     (state.switches[fl.id] || []).forEach((g) => {
       if (isHubGang(g) || String(g.id) === String(loc.id)) return;   // hubs aren't pairable; can't pair within the same gang
-      const cross = String(fl.id) !== String(state.currentFloor);
-      g.switches.forEach((sw, si) => { if (sw.type === 'blank') return; const baseRef = gangLetterOf(fl.id, g) + (si + 1); units.push({ id: sw.id, ref: cross ? (floorCode(fl) + '·' + baseRef) : baseRef, label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }); });  // cross-floor refs are floor-prefixed
+      g.switches.forEach((sw, si) => { if (sw.type === 'blank') return; units.push({ id: sw.id, ref: floorCode(fl) + '·' + gangLetterOf(fl.id, g) + (si + 1), label: g.label, control: sw.control, floor: fl.name || fl.id, circuit: sw.circuit }); });
     });
   }
   const rows = loc.switches.map((sw, i) => {
