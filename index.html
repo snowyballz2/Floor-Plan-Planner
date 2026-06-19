@@ -311,15 +311,18 @@
   .wi-seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
   .wi-seg button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 7px 6px; font: inherit; font-size: 12px; cursor: pointer; }
   .wi-seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
-  /* Switch type segmented control uses the switch (purple) accent. */
+  /* Switch type segmented control uses the switch (blue) accent. */
   .si-row .wi-seg button.on { background: #2563eb; }
-  /* Independent feature toggles (Smart / LED Strip) — multi-select, can combine with the type. */
-  /* Smart / LED Strip — same look as the type segmented control above, but each
-     toggles independently (zero, one, or both can be highlighted). */
+  /* Smart / LED Strip / Night Mode — same look as the type control above, but each
+     toggles independently (zero, one, or all can be highlighted). */
   .si-flags { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-top: 7px; }
-  .si-flags button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 7px 6px; font: inherit; font-size: 12px; cursor: pointer; }
+  .si-flags button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 7px 2px; font: inherit; font-size: 11px; cursor: pointer; }
   .si-flags button + button { border-left: 1px solid var(--border); }
   .si-flags button.on { background: #0891b2; color: #fff; font-weight: 600; }
+  /* The type/flag bars now hold 4 and 3 buttons — keep each label on one line and
+     compact enough to fit the (narrow) properties panel. */
+  .si-row .wi-seg button, .si-flags button { white-space: nowrap; }
+  .si-row .wi-seg button { padding: 7px 2px; font-size: 11px; }
   .wi-flag { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink-soft); padding: 6px; font: inherit; font-size: 12px; cursor: pointer; }
   .wi-flag.on { background: #0891b2; border-color: #0891b2; color: #fff; font-weight: 600; }
   .si-blank { margin-top: 7px; font-size: 11px; color: var(--ink-faint); font-style: italic; }
@@ -3427,11 +3430,11 @@ let winDrag = null;
 // 1..N switches; each switch is normal/dimmer and may join a circuit (3-way,
 // 4-way, …) with any number of other switches that control the same light.
 // Same lifecycle as windows: save/load/undo/sync.
-const SWITCH_TYPES = ['normal', 'dimmer', 'blank'];
+const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote'];
 // Primary type is one of normal/dimmer/blank (exactly one). `smart` and `ledStrip`
 // are independent flags that can layer on top of any non-blank type.
-function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : 'Switch'; }
-function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); return o; }
+function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : 'Switch'; }
+function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); if (sw && sw.nightMode) o.push('Night Mode'); return o; }
 
 // ---- Export selection: which individual switches are picked for the export table.
 // Synced across devices as one set (whole-set last-write-wins on its change-time).
@@ -3550,13 +3553,14 @@ function normalizeSwitches() {
     if (!state.deletedSwitches[sf]) state.deletedSwitches[sf] = {};
     for (const s of state.switches[sf]) {
       if (s._ts == null) s._ts = 0;
-      if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false }];
+      if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }];
       for (const sw of s.switches) {
         if (sw.id == null) sw.id = genId();
         if (sw.circuit === undefined) sw.circuit = null;
-        if (sw.type == null) sw.type = 'normal';            // primary: normal | dimmer | blank
+        if (sw.type == null) sw.type = 'normal';            // primary: normal | dimmer | blank | remote
         if (typeof sw.smart !== 'boolean') sw.smart = false; // independent feature flags
         if (typeof sw.ledStrip !== 'boolean') sw.ledStrip = false;
+        if (typeof sw.nightMode !== 'boolean') sw.nightMode = false;
       }
     }
   }
@@ -3615,7 +3619,7 @@ function newSwitch(x, y) {
   return {
     id: genId(), x, y,
     label: base + '-S' + n,
-    switches: [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false }],
+    switches: [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }],
     _ts: Date.now(),
   };
 }
@@ -3768,11 +3772,13 @@ function renderSwitchInspector(container, force) {
         <button data-v="normal" class="${sw.type === 'normal' ? 'on' : ''}">Switch</button>
         <button data-v="dimmer" class="${sw.type === 'dimmer' ? 'on' : ''}">Dimmer</button>
         <button data-v="blank" class="${sw.type === 'blank' ? 'on' : ''}">Blank</button>
+        <button data-v="remote" class="${sw.type === 'remote' ? 'on' : ''}">Remote</button>
       </div>
       ${sw.type === 'blank' ? `<div class="si-blank">Blank — an empty position in this gang (nothing wired here).</div>` : `
       <div class="si-flags" data-flags="${i}">
         <button data-flag="smart" class="${sw.smart ? 'on' : ''}">Smart</button>
         <button data-flag="ledStrip" class="${sw.ledStrip ? 'on' : ''}">LED Strip</button>
+        <button data-flag="nightMode" class="${sw.nightMode ? 'on' : ''}">Night Mode</button>
       </div>
       ${cid != null ? `<div class="si-circuit" style="--cc:${color}">
         <span class="si-cdot"></span>
@@ -3869,7 +3875,7 @@ function wireSwitchInspector(container, loc) {
     });
   });
   const add = container.querySelector('[data-act="add"]');
-  if (add) add.addEventListener('click', () => { loc.switches.push({ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
+  if (add) add.addEventListener('click', () => { loc.switches.push({ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
   const rm = container.querySelector('[data-act="remove"]');
   if (rm) rm.addEventListener('click', () => { if (confirm(`Remove gang "${loc.label}" and its ${loc.switches.length} switch(es)?`)) deleteSwitch(loc.id); });
   const csv = container.querySelector('[data-act="csv"]');
@@ -3879,7 +3885,7 @@ function wireSwitchInspector(container, loc) {
 function exportSwitchesCsv(opts) {
   const selectedOnly = !!(opts && opts.selectedOnly);
   const selSet = exportSelSet();
-  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Smart', 'LED Strip', 'Circuit']];
+  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Smart', 'LED Strip', 'Night Mode', 'Circuit']];
   for (const f of getAllFloors()) {
     (state.switches[f.id] || []).forEach((s, gi) => {
       const letter = gangLetter(gi);
@@ -3890,7 +3896,7 @@ function exportSwitchesCsv(opts) {
           const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => memberRef(m, f.id));
           if (others.length) circuit = (others.length + 1) + '-way with ' + others.join(' + ');
         }
-        rows.push([f.name || f.id, letter, s.label, letter + (i + 1), sw.control || '', switchTypeLabel(sw.type), sw.smart ? 'Yes' : '', sw.ledStrip ? 'Yes' : '', circuit]);
+        rows.push([f.name || f.id, letter, s.label, letter + (i + 1), sw.control || '', switchTypeLabel(sw.type), sw.smart ? 'Yes' : '', sw.ledStrip ? 'Yes' : '', sw.nightMode ? 'Yes' : '', circuit]);
       });
     });
   }
@@ -4079,14 +4085,18 @@ function renderSummary() {
         } else {
           const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
           const blanks  = s.switches.filter(x => x.type === 'blank').length;
+          const remotes = s.switches.filter(x => x.type === 'remote').length;
           const smart   = s.switches.filter(x => x.smart).length;
           const leds    = s.switches.filter(x => x.ledStrip).length;
+          const nights  = s.switches.filter(x => x.nightMode).length;
           const paired  = s.switches.filter(x => x.circuit != null).length;
           const metaBits = [`${s.switches.length}-gang`];
           if (dimmers) metaBits.push(`${dimmers} dimmer${dimmers !== 1 ? 's' : ''}`);
+          if (remotes) metaBits.push(`${remotes} remote${remotes !== 1 ? 's' : ''}`);
           if (blanks)  metaBits.push(`${blanks} blank${blanks !== 1 ? 's' : ''}`);
           if (smart)   metaBits.push(`${smart} smart`);
           if (leds)    metaBits.push(`${leds} LED`);
+          if (nights)  metaBits.push(`${nights} night`);
           if (paired)  metaBits.push(`${paired} paired`);
           meta = metaBits.join(' · ');
         }
