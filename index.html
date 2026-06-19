@@ -314,7 +314,12 @@
   /* Switch type segmented control uses the switch (purple) accent. */
   .si-row .wi-seg button.on { background: #2563eb; }
   /* Independent feature toggles (Smart / LED Strip) — multi-select, can combine with the type. */
-  .wi-flags { display: flex; gap: 6px; margin-top: 7px; }
+  /* Smart / LED Strip — same look as the type segmented control above, but each
+     toggles independently (zero, one, or both can be highlighted). */
+  .si-flags { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-top: 7px; }
+  .si-flags button { flex: 1; background: var(--paper); color: var(--ink-soft); border: none; padding: 7px 6px; font: inherit; font-size: 12px; cursor: pointer; }
+  .si-flags button + button { border-left: 1px solid var(--border); }
+  .si-flags button.on { background: #0891b2; color: #fff; font-weight: 600; }
   .wi-flag { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink-soft); padding: 6px; font: inherit; font-size: 12px; cursor: pointer; }
   .wi-flag.on { background: #0891b2; border-color: #0891b2; color: #fff; font-weight: 600; }
   .si-blank { margin-top: 7px; font-size: 11px; color: var(--ink-faint); font-style: italic; }
@@ -3765,9 +3770,9 @@ function renderSwitchInspector(container, force) {
         <button data-v="blank" class="${sw.type === 'blank' ? 'on' : ''}">Blank</button>
       </div>
       ${sw.type === 'blank' ? `<div class="si-blank">Blank — an empty position in this gang (nothing wired here).</div>` : `
-      <div class="wi-flags" data-flags="${i}">
-        <button data-flag="smart" class="${sw.smart ? 'on' : ''}">${sw.smart ? '✓ ' : ''}Smart</button>
-        <button data-flag="ledStrip" class="${sw.ledStrip ? 'on' : ''}">${sw.ledStrip ? '✓ ' : ''}LED Strip</button>
+      <div class="si-flags" data-flags="${i}">
+        <button data-flag="smart" class="${sw.smart ? 'on' : ''}">Smart</button>
+        <button data-flag="ledStrip" class="${sw.ledStrip ? 'on' : ''}">LED Strip</button>
       </div>
       ${cid != null ? `<div class="si-circuit" style="--cc:${color}">
         <span class="si-cdot"></span>
