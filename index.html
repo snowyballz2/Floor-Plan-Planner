@@ -423,6 +423,8 @@
   #select-bar button { border: 1px solid rgba(255,255,255,0.5); background: transparent; color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 14px; border-radius: 7px; cursor: pointer; }
   #select-bar #select-accept { background: #16a34a; border-color: #16a34a; }
   #select-bar #select-cancel:hover { background: rgba(255,255,255,0.14); }
+  #select-bar #select-bar-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #select-bar #select-all { background: rgba(255,255,255,0.14); flex: 0 0 auto; }
   body.select-mode .controls { opacity: 0.4; pointer-events: none; }   /* lock editing while selecting */
   body.select-mode #canvas-wrapper { cursor: pointer; }
   .sum-pick { display: inline-flex; align-items: center; margin-right: 7px; vertical-align: middle; flex: 0 0 auto; }
@@ -1072,7 +1074,7 @@
 <div id="select-bar" hidden>
   <span class="sb-dot"></span>
   <span id="select-bar-text">Tap switches to select for export</span>
-  <span style="flex:1"></span>
+  <button id="select-all" type="button">Select all</button>
   <button id="select-cancel" type="button">Cancel</button>
   <button id="select-accept" type="button">Accept</button>
 </div>
@@ -3440,21 +3442,23 @@ let winDrag = null;
 // 1..N switches; each switch is normal/dimmer and may join a circuit (3-way,
 // 4-way, …) with any number of other switches that control the same light.
 // Same lifecycle as windows: save/load/undo/sync.
-const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote'];
+const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote', 'outlet'];
 // Primary type is one of normal/dimmer/blank (exactly one). `smart` and `ledStrip`
 // are independent flags that can layer on top of any non-blank type.
-function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : 'Switch'; }
+function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : t === 'outlet' ? 'Outlet' : 'Switch'; }
 // A pin is either a switch GANG (lettered A,B,C…) or a standalone HUB device (◉).
 function isHubGang(g) { return !!g && g.kind === 'hub'; }
 // A gang whose (non-blank) switches are all "remote" reads as a remote pin → amber.
-function gangIsAllRemote(g) { if (!g || isHubGang(g)) return false; const real = g.switches.filter(sw => sw.type !== 'blank'); return real.length > 0 && real.every(sw => sw.type === 'remote'); }
+function gangIsAllRemote(g) { if (!g || isHubGang(g)) return false; const real = g.switches.filter(sw => sw.type !== 'blank' && sw.type !== 'outlet'); return real.length > 0 && real.every(sw => sw.type === 'remote'); }
 function floorGangs(floorId) { return (state.switches[floorId] || []).filter(g => !isHubGang(g)); }   // hubs don't take a letter
 function gangLetterOf(floorId, gang) { const i = floorGangs(floorId).indexOf(gang); return i >= 0 ? gangLetter(i) : '?'; }
 function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if (sw && sw.ledStrip) o.push('LED Strip'); if (sw && sw.nightMode) o.push('Night'); return o; }
 
 // ---- Export selection: which individual switches are picked for the export table.
 // Synced across devices as one set (whole-set last-write-wins on its change-time).
-// Blanks can't be selected.
+// EVERY switch can be ticked individually (blanks & outlets included), but the bulk
+// actions — "Select all" and tapping a gang — only grab real devices; blanks and
+// outlets stay OFF unless you pick them yourself.
 function exportSelSet() { return new Set((state.exportSel || []).map(String)); }
 function isSwSelected(id) { return exportSelSet().has(String(id)); }
 function commitExportSel(arr) { state.exportSel = arr; state.exportSelTs = Date.now(); }
@@ -3463,15 +3467,33 @@ function setSwSelected(id, on) {
   if (on) set.add(String(id)); else set.delete(String(id));
   commitExportSel([...set]);
 }
-function gangSelectableSwitches(g) { return isHubGang(g) ? [] : g.switches.filter(sw => sw.type !== 'blank'); }
-function gangAnySelected(g) { const set = exportSelSet(); return gangSelectableSwitches(g).some(sw => set.has(String(sw.id))); }
-// Toggle a whole gang: any picked → clear them all; otherwise pick all its (non-blank) switches.
+// A "real device" for bulk selection: a switch, dimmer, or remote. Blanks (empty
+// slots) and outlets (receptacles) are pickable one-by-one but never grabbed in bulk.
+function isBulkSelectable(sw) { return !!sw && sw.type !== 'blank' && sw.type !== 'outlet'; }
+function gangAllSwitches(g) { return isHubGang(g) ? [] : g.switches; }
+function gangBulkSwitches(g) { return isHubGang(g) ? [] : g.switches.filter(isBulkSelectable); }
+function gangAnySelected(g) { const set = exportSelSet(); return gangAllSwitches(g).some(sw => set.has(String(sw.id))); }
+// Tap a whole gang → toggle its real devices (blanks/outlets skipped). A gang that is
+// ONLY blanks/outlets falls back to toggling those, so its pin stays usable.
 function toggleGangSelection(g) {
-  const sel = gangSelectableSwitches(g);
-  const any = gangAnySelected(g);
+  const pool = gangBulkSwitches(g).length ? gangBulkSwitches(g) : gangAllSwitches(g);
+  if (!pool.length) return;
   const set = exportSelSet();
-  sel.forEach(sw => { if (any) set.delete(String(sw.id)); else set.add(String(sw.id)); });
+  const any = pool.some(sw => set.has(String(sw.id)));
+  pool.forEach(sw => { if (any) set.delete(String(sw.id)); else set.add(String(sw.id)); });
   commitExportSel([...set]);
+}
+// "Select all" across every floor — real devices only (blanks & outlets excluded).
+function selectAllSwitches() {
+  const set = exportSelSet();
+  for (const f of getAllFloors()) (state.switches[f.id] || []).forEach(g => gangBulkSwitches(g).forEach(sw => set.add(String(sw.id))));
+  commitExportSel([...set]);
+}
+// True once every real device (all floors) is picked → the bulk button flips to "Clear all".
+function allBulkSelected() {
+  const set = exportSelSet(); let any = false;
+  for (const f of getAllFloors()) for (const g of (state.switches[f.id] || [])) for (const sw of gangBulkSwitches(g)) { any = true; if (!set.has(String(sw.id))) return false; }
+  return any;
 }
 function selectedSwitchCount() { return (state.exportSel || []).length; }
 
@@ -3728,11 +3750,11 @@ function renderSwitches() {
       layer.appendChild(pin);
       return;
     }
-    const picked = g.switches.some(sw => sw.type !== 'blank' && selSet.has(String(sw.id)));
+    const picked = g.switches.some(sw => selSet.has(String(sw.id)));
     pin.className = 'sw-pin' + editSel + (gangIsAllRemote(g) ? ' remote' : '') + (picked ? ' selected' : '');
     const letter = gangLetterOf(f.id, g);
     pin.textContent = letter;
-    const nSel = gangSelectableSwitches(g).filter(sw => selSet.has(String(sw.id))).length;
+    const nSel = g.switches.filter(sw => selSet.has(String(sw.id))).length;
     // Cross-floor circuit partners (unique by ref) — shown as stub + floor-coded chip.
     const seenX = new Set(); const xlinks = [];
     g.switches.forEach(sw => {
@@ -3804,8 +3826,9 @@ function renderSwitchInspector(container, force) {
         <button data-v="dimmer" class="${sw.type === 'dimmer' ? 'on' : ''}">Dimmer</button>
         <button data-v="blank" class="${sw.type === 'blank' ? 'on' : ''}">Blank</button>
         <button data-v="remote" class="${sw.type === 'remote' ? 'on' : ''}">Remote</button>
+        <button data-v="outlet" class="${sw.type === 'outlet' ? 'on' : ''}">Outlet</button>
       </div>
-      ${sw.type === 'blank' ? `<div class="si-blank">Blank — an empty position in this gang (nothing wired here).</div>` : `
+      ${(sw.type === 'blank' || sw.type === 'outlet') ? `<div class="si-blank">${sw.type === 'outlet' ? 'Outlet — a receptacle here, not a switch. You can pick it for export, but it stays off by default.' : 'Blank — an empty position in this gang (nothing wired here).'}</div>` : `
       <div class="si-flags" data-flags="${i}">
         <button data-flag="smart" class="${sw.smart ? 'on' : ''}">Smart</button>
         <button data-flag="ledStrip" class="${sw.ledStrip ? 'on' : ''}">LED Strip</button>
@@ -3885,7 +3908,7 @@ function wireSwitchInspector(container, loc) {
       const i = +b.parentElement.getAttribute('data-segsw');
       const v = b.getAttribute('data-v');
       loc.switches[i].type = v;
-      if (v === 'blank') leaveCircuit(loc.switches[i]);   // a blank slot isn't wired — drop any pairing
+      if (v === 'blank' || v === 'outlet') leaveCircuit(loc.switches[i]);   // blank/outlet aren't lighting — drop any pairing
       touch(loc); renderSwitches(); renderSwitchInspector(container, true); scheduleSave();
     });
   });
@@ -4034,6 +4057,8 @@ let swDrag = null;
 // the export table, then Accept (keep) or Cancel (revert to the snapshot). While
 // in this mode all gang/switch editing is locked.
 function updateSelectBar() {
+  const allBtn = document.getElementById('select-all');
+  if (allBtn) allBtn.textContent = allBulkSelected() ? 'Clear all' : 'Select all';
   const el = document.getElementById('select-bar-text');
   if (!el) return;
   const n = selectedSwitchCount();
@@ -4075,6 +4100,11 @@ function cancelSelectMode() {
   if (acc) acc.addEventListener('click', acceptSelectMode);
   const can = document.getElementById('select-cancel');
   if (can) can.addEventListener('click', cancelSelectMode);
+  const all = document.getElementById('select-all');
+  if (all) all.addEventListener('click', () => {
+    if (allBulkSelected()) commitExportSel([]); else selectAllSwitches();
+    renderSwitches(); updateSelectBar();
+  });
 })();
 
 // ============================================================
@@ -4125,7 +4155,7 @@ function renderSummary() {
   } else {
     const selSet = exportSelSet();
     const onlySel = summarySelectedOnly;
-    const gangShown = (s) => !onlySel || s.switches.some(sw => sw.type !== 'blank' && selSet.has(String(sw.id)));
+    const gangShown = (s) => !onlySel || s.switches.some(sw => selSet.has(String(sw.id)));
     let shownSel = 0;
     for (const f of getAllFloors()) {
       const list = state.switches[f.id] || [];
@@ -4145,7 +4175,7 @@ function renderSummary() {
         }
         total++;
         const letter = gangLetterOf(f.id, s);
-        const nSel    = s.switches.filter(x => x.type !== 'blank' && selSet.has(String(x.id))).length;
+        const nSel    = s.switches.filter(x => selSet.has(String(x.id))).length;
         let meta;
         if (onlySel) {
           meta = `${nSel} of ${s.switches.length} selected`;
@@ -4153,6 +4183,7 @@ function renderSummary() {
           const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
           const blanks  = s.switches.filter(x => x.type === 'blank').length;
           const remotes = s.switches.filter(x => x.type === 'remote').length;
+          const outlets = s.switches.filter(x => x.type === 'outlet').length;
           const smart   = s.switches.filter(x => x.smart).length;
           const leds    = s.switches.filter(x => x.ledStrip).length;
           const nights  = s.switches.filter(x => x.nightMode).length;
@@ -4160,6 +4191,7 @@ function renderSummary() {
           const metaBits = [`${s.switches.length}-gang`];
           if (dimmers) metaBits.push(`${dimmers} dimmer${dimmers !== 1 ? 's' : ''}`);
           if (remotes) metaBits.push(`${remotes} remote${remotes !== 1 ? 's' : ''}`);
+          if (outlets) metaBits.push(`${outlets} outlet${outlets !== 1 ? 's' : ''}`);
           if (blanks)  metaBits.push(`${blanks} blank${blanks !== 1 ? 's' : ''}`);
           if (smart)   metaBits.push(`${smart} smart`);
           if (leds)    metaBits.push(`${leds} LED`);
@@ -4168,7 +4200,7 @@ function renderSummary() {
           meta = metaBits.join(' · ');
         }
         const rows = s.switches.map((sw, j) => ({ sw, j }))
-          .filter(({ sw }) => !onlySel || (sw.type !== 'blank' && selSet.has(String(sw.id))))   // only-selected hides the rest
+          .filter(({ sw }) => !onlySel || selSet.has(String(sw.id)))   // only-selected hides the rest
           .map(({ sw, j }) => {
             let circ = '';
             if (sw.circuit != null) {
@@ -4176,7 +4208,7 @@ function renderSummary() {
               if (others.length) circ = ` · <span style="color:${colorMap[String(sw.circuit)] || CIRCUIT_COLORS[0]}">●</span> ${(others.length + 1)}-way: ${winEscHtml(others.join(' · '))}`;
             }
             const flags = switchFlags(sw);
-            const selectable = sw.type !== 'blank';
+            const selectable = true;   // every switch (incl. blanks & outlets) is individually pickable
             const picked = selectable && selSet.has(String(sw.id));
             if (picked) shownSel++;
             const cb = selectable
