@@ -381,6 +381,10 @@
   .si-row-top input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); }
   .si-row-rm { border: none; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 13px; padding: 2px 4px; }
   .si-row-rm:hover { color: var(--danger); }
+  .si-drag { flex: 0 0 auto; cursor: grab; touch-action: none; color: var(--ink-faint); font-size: 15px; line-height: 1; padding: 2px 3px; user-select: none; -webkit-user-select: none; }
+  .si-drag:active { cursor: grabbing; }
+  .si-row.si-dragging { opacity: 0.96; box-shadow: 0 8px 22px rgba(0,0,0,0.28); position: relative; z-index: 6; background: var(--paper); }
+  body.si-reordering, body.si-reordering * { user-select: none !important; -webkit-user-select: none !important; }
   .si-pairsel { width: 100%; font: inherit; font-size: 12px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); margin-top: 6px; }
   .si-circuit { margin-top: 6px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--cc, #6d28d9); }
   .si-cdot { width: 9px; height: 9px; border-radius: 50%; background: var(--cc, #6d28d9); flex: 0 0 auto; box-shadow: 0 0 0 2px color-mix(in srgb, var(--cc, #6d28d9) 22%, transparent); }
@@ -3815,8 +3819,9 @@ function renderSwitchInspector(container, force) {
     // Pair targets: any switch not already in THIS switch's circuit.
     const opts = units.filter(u => cid == null || String(u.circuit) !== String(cid));
     return `
-    <div class="si-row">
+    <div class="si-row" data-swid="${sw.id}">
       <div class="si-row-top">
+        ${loc.switches.length > 1 ? `<span class="si-drag" title="Drag to reorder" data-drag="${i}">⠿</span>` : ''}
         <span class="si-n">${ref}</span>
         <input data-sf="control" data-i="${i}" value="${winEscAttr(sw.control)}" placeholder="what it controls (e.g. ceiling)">
         <button class="si-row-rm" data-rm="${i}" title="Remove this switch">✕</button>
@@ -3956,6 +3961,53 @@ function wireSwitchInspector(container, loc) {
   if (rm) rm.addEventListener('click', () => { if (confirm(`Remove gang "${loc.label}" and its ${loc.switches.length} switch(es)?`)) deleteSwitch(loc.id); });
   const csv = container.querySelector('[data-act="csv"]');
   if (csv) csv.addEventListener('click', exportSwitchesCsv);
+  wireSwitchRowDrag(container, loc);
+}
+
+// Drag a switch row by its grip to reorder it within the gang. Refs (G1-1, G1-2…)
+// renumber by position; pairings ride along untouched (they're keyed by circuit id,
+// not by the label). Only commits when the full set of switches is preserved.
+function wireSwitchRowDrag(container, loc) {
+  const wrap = container.querySelector('.si-rows');
+  if (!wrap) return;
+  let drag = null;
+  wrap.querySelectorAll('.si-drag').forEach(handle => {
+    handle.addEventListener('pointerdown', (e) => {
+      const row = handle.closest('.si-row'); if (!row) return;
+      drag = { row };
+      row.classList.add('si-dragging'); document.body.classList.add('si-reordering');
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault(); e.stopPropagation();
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!drag) return; e.preventDefault();
+      let placed = false;
+      for (const r of wrap.querySelectorAll('.si-row')) {
+        if (r === drag.row) continue;
+        const rect = r.getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) {
+          if (r.previousElementSibling !== drag.row) wrap.insertBefore(drag.row, r);
+          placed = true; break;
+        }
+      }
+      if (!placed && wrap.lastElementChild !== drag.row) wrap.appendChild(drag.row);
+    });
+    const end = () => {
+      if (!drag) return;
+      drag.row.classList.remove('si-dragging'); document.body.classList.remove('si-reordering');
+      const order = [...wrap.querySelectorAll('.si-row')].map(r => r.getAttribute('data-swid'));
+      drag = null;
+      const cur = loc.switches.map(s => String(s.id));
+      if (order.join('') === cur.join('')) return;    // no change
+      const byId = {}; loc.switches.forEach(s => byId[String(s.id)] = s);
+      const next = order.map(id => byId[id]).filter(Boolean);
+      if (next.length !== loc.switches.length) return;            // safety: never drop a switch
+      loc.switches = next;
+      touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave();
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  });
 }
 
 function exportSwitchesCsv(opts) {
