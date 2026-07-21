@@ -295,6 +295,30 @@
   }
   .win-pin.ok { background: var(--accent); }
   .win-pin.pending { background: var(--warning); }
+  .win-pin.st-unconfirmed { background: #9ca3af; }
+  .win-pin.st-measured { background: #2563eb; }
+  .win-pin.st-ordered { background: #d97706; }
+  .win-pin.st-received { background: #7c3aed; }
+  .win-pin.st-installed { background: #16a34a; }
+  /* window status field + motorized-shade section */
+  select.wi-status { font-weight: 600; }
+  .wi-status-bar { display: flex; gap: 3px; margin-top: 6px; }
+  .wi-status-bar .sb { flex: 1; height: 5px; border-radius: 3px; background: var(--border); }
+  .wsh-sec { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .wsh-head { display: flex; align-items: center; gap: 8px; padding: 9px 11px; background: var(--paper-dim); border-bottom: 1px solid var(--border); font-weight: 700; font-size: 12.5px; }
+  .wsh-head .wsh-t { flex: 1; }
+  .wsh-body { padding: 10px 11px; }
+  .wsh-body > label { display: block; margin-bottom: 3px; }
+  .wsh-body input, .wsh-body select { width: 100%; font: inherit; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); }
+  .wsh-grp { font-size: 10px; font-weight: 700; color: var(--ink-faint); letter-spacing: .05em; text-transform: uppercase; margin: 13px 0 7px; padding-bottom: 3px; border-bottom: 1px dashed var(--border); }
+  .wsh-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .wsh-2 > div { min-width: 0; }
+  .wsh-derived { font-size: 12px; color: var(--ink-soft); padding: 7px 9px; background: var(--paper-dim); border: 1px solid var(--border); border-radius: 6px; }
+  .wsh-hint { font-size: 10.5px; color: var(--ink-faint); margin-top: 6px; }
+  .wsh-w { display: flex; gap: 5px; }
+  .wsh-w input { flex: 1; }
+  .wsh-w select { flex: 0 0 auto; width: 64px; }
+  .wsh-mini { font-size: 10px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 3px; }
   .win-pin.warn { box-shadow: 0 0 0 3px var(--danger), var(--shadow); }
   .win-pin.sel { outline: 3px solid var(--accent-soft); outline-offset: 2px; z-index: 8; }
   .win-pin:active { cursor: grabbing; }
@@ -3154,6 +3178,32 @@ let rlDrag = null;
 // Same lifecycle as room labels: save / load / undo / sync / tombstone.
 // Positions stored in feet (x,y); measurements in inches.
 const WINDOW_TYPES = ['Window', 'Sliding glass door', 'Door', 'Door sidelight'];
+// ---- Window status (measure → order → install pipeline) + motorized-shade spec ----
+const WINDOW_STATUSES = ['unconfirmed', 'measured', 'ordered', 'received', 'installed'];
+const WIN_STATUS_LABEL = { unconfirmed: 'Unconfirmed', measured: 'Measured', ordered: 'Ordered', received: 'Received', installed: 'Installed' };
+const WIN_STATUS_COLOR = { unconfirmed: '#9ca3af', measured: '#2563eb', ordered: '#d97706', received: '#7c3aed', installed: '#16a34a' };
+function winStatus(w) { return (w && WINDOW_STATUSES.includes(w.status)) ? w.status : 'unconfirmed'; }
+// SmartWings option lists (read from their configurator) — motor is Matter-only.
+const SHADE_FRACS = ['0', '1/8', '1/4', '3/8', '1/2', '5/8', '3/4', '7/8'];
+const SHADE_FABRICS = ['White', 'Cream', 'Grey'];
+const SHADE_REMOTES = ['None', '15-channel', 'Helix Dial 8-channel'];
+const SHADE_VALANCES = ['Standard', 'Cassette', 'Silver Anodized Square', 'White Square', 'Black Square'];
+const SHADE_BOTTOMBARS = ['Standard', 'Fabric Wrapped', 'White Square', 'Black Square'];
+const SHADE_LIGHTBLOCKERS = ['None', 'White', 'Black', 'White Side-Rail Track', 'Black Side-Rail Track'];
+function fracEighth(x) { const e = Math.round((x - Math.floor(x)) * 8); return SHADE_FRACS[e === 8 ? 0 : e] || '0'; }
+function shadeMotor(sh) { return (sh && sh.power === 'battery') ? 'Matter over Thread' : 'Matter over Ethernet'; }
+function newShade(w) {
+  const o = w ? windowOrder(w) : null;   // seed width/height from the measured order size
+  return {
+    blackout: '100', orderNo: '', price: '', mount: (w && w.mount) || 'inside',
+    wWhole: o ? Math.floor(o.ow) : '', wFrac: o ? fracEighth(o.ow) : '0',
+    hWhole: o ? Math.floor(o.oh) : '', hFrac: o ? fracEighth(o.oh) : '0',
+    rollType: 'standard', motorSide: 'left', power: 'poe',
+    remote: '15-channel', fabric: 'White', valance: 'Standard', bottomBar: 'Standard', lightBlockers: 'None',
+  };
+}
+function shadeDim(whole, frac) { return (whole === '' || whole == null) ? '?' : whole + (frac && frac !== '0' ? ' ' + frac : '') + '"'; }
+function shadeDims(sh) { return sh ? shadeDim(sh.wWhole, sh.wFrac) + ' × ' + shadeDim(sh.hWhole, sh.hFrac) : ''; }
 
 function currentWindows() { return state.windows[state.currentFloor] || []; }
 function findWindow(id) { return currentWindows().find(w => w.id === id); }
@@ -3172,6 +3222,7 @@ function newWindow(x, y) {
     depth: null, diag: [null, null],
     overlapW: 6, overlapH: 3,
     notes: '', _ts: Date.now(),
+    status: 'unconfirmed', shade: null,
   };
 }
 
@@ -3241,7 +3292,7 @@ function renderWindows() {
   currentWindows().forEach((w, i) => {
     const st = windowStatus(w);
     const pin = document.createElement('div');
-    pin.className = 'win-pin ' + (st.complete ? 'ok' : 'pending')
+    pin.className = 'win-pin st-' + winStatus(w)
       + (st.square === false ? ' warn' : '')
       + (w.id === state.selectedWindowId ? ' sel' : '');
     pin.dataset.id = w.id;
@@ -3253,6 +3304,60 @@ function renderWindows() {
   });
 }
 
+// Motorized-shade sub-panel for a window (SmartWings spec). Off by default.
+function windowShadeHtml(w) {
+  const on = !!w.shade, sh = w.shade;
+  const seg = (name, val, opts) => `<div class="wi-seg" data-shseg="${name}">${opts.map(([v, lbl]) => `<button data-v="${v}" class="${val === v ? 'on' : ''}">${lbl}</button>`).join('')}</div>`;
+  const opt = (arr, val) => arr.map(o => `<option ${o === val ? 'selected' : ''}>${o}</option>`).join('');
+  const fracSel = (name, val) => `<select data-shf="${name}">${SHADE_FRACS.map(f => `<option value="${f}" ${val === f ? 'selected' : ''}>${f === '0' ? '0"' : f + '"'}</option>`).join('')}</select>`;
+  return `
+    <div class="wsh-sec">
+      <div class="wsh-head">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="3.5" rx="1"/><path d="M6 6.5v10a2 2 0 002 2h8a2 2 0 002-2v-10"/><line x1="8.5" y1="18.5" x2="15.5" y2="18.5"/></svg>
+        <span class="wsh-t">Motorized shade${on ? ' · SmartWings' : ''}</span>
+        <div class="wi-seg" data-shtoggle style="width:120px;flex:0 0 auto">
+          <button data-shon="0" class="${on ? '' : 'on'}">None</button>
+          <button data-shon="1" class="${on ? 'on' : ''}">Shade</button>
+        </div>
+      </div>
+      ${on ? `<div class="wsh-body">
+        <label>Blackout</label>
+        ${seg('blackout', sh.blackout, [['70', '70% Essential'], ['100', '100% Essential']])}
+        <div class="wsh-2" style="margin-top:8px">
+          <div><div class="wsh-mini">Order #</div><input data-shf="orderNo" value="${winEscAttr(sh.orderNo)}"></div>
+          <div><div class="wsh-mini">Price</div><input data-shf="price" value="${winEscAttr(sh.price)}" placeholder="$"></div>
+        </div>
+        <div class="wsh-grp">Size &amp; mount</div>
+        <label>Mount</label>
+        ${seg('mount', sh.mount, [['inside', 'Inside'], ['outside', 'Outside']])}
+        <div class="wsh-2" style="margin-top:8px">
+          <div><div class="wsh-mini">Width</div><div class="wsh-w"><input type="number" step="1" inputmode="numeric" data-shf="wWhole" value="${sh.wWhole}">${fracSel('wFrac', sh.wFrac)}</div></div>
+          <div><div class="wsh-mini">Height</div><div class="wsh-w"><input type="number" step="1" inputmode="numeric" data-shf="hWhole" value="${sh.hWhole}">${fracSel('hFrac', sh.hFrac)}</div></div>
+        </div>
+        <div class="wsh-2" style="margin-top:8px">
+          <div><div class="wsh-mini">Roll type</div>${seg('rollType', sh.rollType, [['standard', 'Standard'], ['reverse', 'Reverse']])}</div>
+          <div><div class="wsh-mini">Motor side</div>${seg('motorSide', sh.motorSide, [['left', 'Left'], ['right', 'Right']])}</div>
+        </div>
+        <div class="wsh-grp">Power &amp; control</div>
+        <label>Power</label>
+        ${seg('power', sh.power, [['poe', 'PoE'], ['battery', 'Battery']])}
+        <div class="wsh-2" style="margin-top:8px">
+          <div><div class="wsh-mini">Motor</div><div class="wsh-derived" data-shmotor>${shadeMotor(sh)}</div></div>
+          <div><div class="wsh-mini">Remote</div><select data-shf="remote">${opt(SHADE_REMOTES, sh.remote)}</select></div>
+        </div>
+        <div class="wsh-hint">Matter · Ethernet on PoE / Thread on Battery.</div>
+        <div class="wsh-grp">Fabric &amp; finish</div>
+        <label>Fabric</label>
+        <select data-shf="fabric">${opt(SHADE_FABRICS, sh.fabric)}</select>
+        <div class="wsh-2" style="margin-top:8px">
+          <div><div class="wsh-mini">Valance</div><select data-shf="valance">${opt(SHADE_VALANCES, sh.valance)}</select></div>
+          <div><div class="wsh-mini">Bottom bar</div><select data-shf="bottomBar">${opt(SHADE_BOTTOMBARS, sh.bottomBar)}</select></div>
+        </div>
+        <div style="margin-top:8px"><div class="wsh-mini">Light blockers</div><select data-shf="lightBlockers">${opt(SHADE_LIGHTBLOCKERS, sh.lightBlockers)}</select></div>
+      </div>` : ''}
+    </div>`;
+}
+
 function renderWindowInspector(container, force) {
   const w = findWindow(state.selectedWindowId);
   if (!w) { container.style.display = 'none'; container.dataset.wid = ''; return; }
@@ -3262,12 +3367,20 @@ function renderWindowInspector(container, force) {
   container.dataset.wid = String(w.id);
   const idx = currentWindows().indexOf(w) + 1;
   const st = windowStatus(w), order = windowOrder(w), isOut = w.mount === 'outside';
+  const sc = WIN_STATUS_COLOR[winStatus(w)], sci = WINDOW_STATUSES.indexOf(winStatus(w));
   const triW = ['top', 'mid', 'bot'], triH = ['left', 'ctr', 'right'];
   container.innerHTML = `
     <div class="wi-head">
       <span class="wi-badge ${st.complete ? 'ok' : 'pending'}">${idx}</span>
       <input class="wi-label" data-f="label" value="${winEscAttr(w.label)}" placeholder="Label / order code">
       <button class="wi-del" data-act="remove" title="Remove window">✕</button>
+    </div>
+    <div class="wi-field">
+      <label>Window status</label>
+      <select class="wi-in wi-status" data-status style="border-color:${sc};color:${sc}">
+        ${WINDOW_STATUSES.map(s => `<option value="${s}" ${winStatus(w) === s ? 'selected' : ''}>${WIN_STATUS_LABEL[s]}</option>`).join('')}
+      </select>
+      <div class="wi-status-bar">${WINDOW_STATUSES.map((s, i) => `<div class="sb"${i <= sci ? ` style="background:${sc}"` : ''}></div>`).join('')}</div>
     </div>
     <div class="wi-field">
       <label>Opening type</label>
@@ -3304,6 +3417,7 @@ function renderWindowInspector(container, force) {
       <label>Notes</label>
       <textarea class="wi-notes" data-f="notes" placeholder="e.g. crank handle on left; west-facing">${winEscHtml(w.notes || '')}</textarea>
     </div>
+    ${windowShadeHtml(w)}
     <div class="wi-field"><button class="wi-btn" data-act="csv">⤓ Export all windows (CSV)</button></div>
     <details class="wi-howto">
       <summary>Measuring rules</summary>
@@ -3338,6 +3452,33 @@ function wireWindowInspector(container, w) {
   container.querySelectorAll('[data-seg="mount"] button').forEach(b => {
     b.addEventListener('click', () => { w.mount = b.getAttribute('data-v'); touch(w); renderWindowInspector(container, true); scheduleSave(); });
   });
+  // window status → recolour select, progress bar, and the plan pin
+  const stSel = container.querySelector('[data-status]');
+  if (stSel) stSel.addEventListener('change', () => { w.status = stSel.value; touch(w); renderWindowInspector(container, true); renderWindows(); scheduleSave(); });
+  // motorized shade: on/off (stash the spec when toggled off so nothing is lost)
+  container.querySelectorAll('[data-shtoggle] button').forEach(b => {
+    b.addEventListener('click', () => {
+      const on = b.getAttribute('data-shon') === '1';
+      if (on === !!w.shade) return;
+      if (on) { w.shade = w.shade || w._shadeStash || newShade(w); delete w._shadeStash; }
+      else { w._shadeStash = w.shade; w.shade = null; }
+      touch(w); renderWindowInspector(container, true); scheduleSave();
+    });
+  });
+  // shade segmented choices (blackout / mount / roll / motor side / power)
+  container.querySelectorAll('[data-shseg] button').forEach(b => {
+    b.addEventListener('click', () => {
+      if (!w.shade) return;
+      w.shade[b.parentElement.getAttribute('data-shseg')] = b.getAttribute('data-v');
+      touch(w); renderWindowInspector(container, true); scheduleSave();   // rebuild updates .on + derived motor
+    });
+  });
+  // shade text inputs + dropdowns (no rebuild — keep focus while typing)
+  container.querySelectorAll('[data-shf]').forEach(el => {
+    const key = el.getAttribute('data-shf');
+    const set = () => { if (w.shade) { w.shade[key] = el.value; touch(w); scheduleSave(); } };
+    el.addEventListener('input', set); el.addEventListener('change', set);
+  });
   const rm = container.querySelector('[data-act="remove"]');
   if (rm) rm.addEventListener('click', () => { if (confirm(`Remove "${w.label}"?`)) deleteWindow(w.id); });
   const csv = container.querySelector('[data-act="csv"]');
@@ -3361,19 +3502,25 @@ function windowLiveRefresh(container, w) {
   if (badge) badge.className = 'wi-badge ' + (st.complete ? 'ok' : 'pending');
   const layer = document.getElementById('window-layer');
   const pin = layer && layer.querySelectorAll('.win-pin')[currentWindows().indexOf(w)];
-  if (pin) pin.className = 'win-pin ' + (st.complete ? 'ok' : 'pending') + (st.square === false ? ' warn' : '') + ' sel';
+  if (pin) pin.className = 'win-pin st-' + winStatus(w) + (st.square === false ? ' warn' : '') + ' sel';
 }
 
 function exportWindowsCsv() {
-  const rows = [['Floor', 'Label', 'Type', 'Mount', 'OrderW', 'OrderW_in', 'OrderH', 'OrderH_in', 'Depth_in', 'Square', 'Notes']];
+  const rows = [['Floor', 'Label', 'Type', 'Mount', 'Status', 'OrderW', 'OrderW_in', 'OrderH', 'OrderH_in', 'Depth_in', 'Square', 'Notes',
+    'Shade', 'Shade_Blackout', 'Shade_W', 'Shade_H', 'Shade_Mount', 'Shade_Power', 'Shade_Motor', 'Shade_Remote', 'Shade_Fabric', 'Shade_Valance', 'Shade_BottomBar', 'Shade_LightBlockers', 'Shade_RollType', 'Shade_MotorSide', 'Shade_OrderNo', 'Shade_Price']];
   for (const f of getAllFloors()) {
     for (const w of (state.windows[f.id] || [])) {
-      const o = windowOrder(w), st = windowStatus(w);
+      const o = windowOrder(w), st = windowStatus(w), sh = w.shade;
       rows.push([
-        f.name || f.id, w.label, w.type, w.mount,
+        f.name || f.id, w.label, w.type, w.mount, WIN_STATUS_LABEL[winStatus(w)],
         o ? inchFrac(o.ow) : '', o ? o.ow : '',
         o ? inchFrac(o.oh) : '', o ? o.oh : '',
-        w.depth ?? '', st.square == null ? '' : (st.square ? 'ok' : 'OUT'), w.notes || ''
+        w.depth ?? '', st.square == null ? '' : (st.square ? 'ok' : 'OUT'), w.notes || '',
+        sh ? ('SmartWings ' + sh.blackout + '% Blackout Essential') : 'No',
+        sh ? sh.blackout + '%' : '', sh ? shadeDim(sh.wWhole, sh.wFrac) : '', sh ? shadeDim(sh.hWhole, sh.hFrac) : '',
+        sh ? sh.mount : '', sh ? (sh.power === 'poe' ? 'PoE' : 'Battery') : '', sh ? shadeMotor(sh) : '',
+        sh ? sh.remote : '', sh ? sh.fabric : '', sh ? sh.valance : '', sh ? sh.bottomBar : '', sh ? sh.lightBlockers : '',
+        sh ? sh.rollType : '', sh ? sh.motorSide : '', sh ? (sh.orderNo || '') : '', sh ? (sh.price || '') : ''
       ]);
     }
   }
@@ -4184,11 +4331,11 @@ function renderSummary() {
       html += `<div class="sum-floor">${winEscHtml(String(f.name || f.id))}</div>`;
       list.forEach((w, i) => {
         total++;
-        const o = windowOrder(w), st = windowStatus(w);
+        const o = windowOrder(w), st = windowStatus(w), sh = w.shade, wsc = WIN_STATUS_COLOR[winStatus(w)];
         const size = o ? `${inchFrac(o.ow)} × ${inchFrac(o.oh)}` : '<span class="sum-dim">not measured</span>';
         const triv = arr => arr.map(v => v == null ? '—' : inchFrac(v)).join(' · ');
         html += `<details class="sum-item">
-          <summary><span class="sum-num win">${i + 1}</span><span class="sum-label">${winEscHtml(w.label)}</span><span class="sum-meta">${size}${o ? ` · ${w.mount}` : ''}${st.square === false ? ' · <span class="sum-warn">out of square</span>' : ''}</span></summary>
+          <summary><span class="sum-num win">${i + 1}</span><span class="sum-label">${winEscHtml(w.label)}</span><span class="sum-meta"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${wsc};margin-right:4px;vertical-align:0"></span>${WIN_STATUS_LABEL[winStatus(w)]} · ${size}${o ? ` · ${w.mount}` : ''}${sh ? ' · shade' : ''}${st.square === false ? ' · <span class="sum-warn">out of square</span>' : ''}</span></summary>
           <div class="sum-detail">
             <div class="sum-kv"><b>Type / mount</b><span>${winEscHtml(w.type)} · ${w.mount}</span></div>
             <div class="sum-kv"><b>Widths (t/m/b)</b><span>${triv(w.w)}</span></div>
@@ -4197,6 +4344,7 @@ function renderSummary() {
             <div class="sum-kv"><b>Depth</b><span>${w.depth == null ? '—' : inchFrac(w.depth)}</span></div>
             <div class="sum-kv"><b>Diagonals</b><span>${triv(w.diag)}${st.square === true ? ' (square)' : st.square === false ? ' (OUT of square)' : ''}</span></div>
             ${w.notes ? `<div class="sum-kv"><b>Notes</b><span>${winEscHtml(w.notes)}</span></div>` : ''}
+            ${sh ? `<div class="sum-kv"><b>Shade</b><span>SmartWings ${sh.blackout}% Essential · ${shadeDims(sh)} · ${winEscHtml(sh.fabric)}${sh.price ? ' · ' + winEscHtml(String(sh.price)) : ''}</span></div>` : ''}
             <button class="sum-locate" data-kind="window" data-floor="${f.id}" data-id="${w.id}">Locate on plan ↗</button>
           </div>
         </details>`;
