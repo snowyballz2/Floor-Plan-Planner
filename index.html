@@ -326,6 +326,9 @@
   .wi-phgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:9px; }
   .wi-ph { position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; border:1px solid var(--border); cursor:pointer; background:var(--paper-dim); }
   .wi-ph img { width:100%; height:100%; object-fit:cover; display:block; }
+  .wi-ph-noimg { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; text-align:center; padding:2px; }
+  .wi-ph-noimg .wi-ph-ic { font-size:20px; opacity:.6; }
+  .wi-ph-noimg .wi-ph-fn { font-size:8px; line-height:1.15; color:var(--ink-faint); word-break:break-all; }
   .wi-ph-rm { position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; background:rgba(17,24,39,.6); color:#fff; font-size:10px; display:flex; align-items:center; justify-content:center; }
   .wi-phnote { font-size:10px; color:var(--ink-faint); margin-top:6px; }
   .wi-mgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
@@ -341,6 +344,9 @@
   .photo-lightbox img { max-width:100%; max-height:86vh; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,.5); }
   .photo-lightbox img.thumb-only { max-width:min(100%,420px); }
   .photo-lightbox .pl-note { color:#e5e7eb; font-size:12px; background:rgba(255,255,255,.12); padding:6px 12px; border-radius:8px; max-width:420px; text-align:center; line-height:1.4; }
+  .photo-lightbox .pl-name { color:#fff; font-size:12px; font-weight:600; background:rgba(255,255,255,.14); padding:4px 12px; border-radius:6px; max-width:88vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .photo-lightbox .pl-actions { display:flex; gap:8px; }
+  .photo-lightbox .pl-save { border:none; border-radius:8px; padding:9px 16px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; background:#2563eb; color:#fff; }
   .photo-lightbox .pl-close { position:absolute; top:-8px; right:-8px; width:34px; height:34px; border-radius:50%; background:#fff; border:none; font-size:16px; cursor:pointer; box-shadow:0 3px 10px rgba(0,0,0,.4); }
   .win-pin.warn { box-shadow: 0 0 0 3px var(--danger), var(--shadow); }
   .win-pin.sel { outline: 3px solid var(--accent-soft); outline-offset: 2px; z-index: 8; }
@@ -3275,33 +3281,66 @@ function scaleImage(file, maxEdge, quality) {
     img.src = url;
   });
 }
+// Photo filenames — saved + synced so the same file dropped into a local photos/ folder is auto-matched.
+function photoFolderSrc(name) { return name ? 'photos/' + encodeURIComponent(name) : ''; }
+function sanitizePhotoBase(s) { return String(s || '').trim().replace(/[^\w.\- ]+/g, '').replace(/\s+/g, '-').replace(/-{2,}/g, '-').replace(/^[-.]+|[-.]+$/g, ''); }
+function allPhotoNames() { const set = new Set(); for (const fid in state.windows) for (const ww of (state.windows[fid] || [])) for (const p of (ww.photos || [])) if (p && p.name) set.add(p.name.toLowerCase()); return set; }
+// Keep a real upload's own name (any format); generate Floor-Window.jpg for camera captures or generic "image.jpg".
+function uniquePhotoName(w, file) {
+  let base = '', ext = 'jpg';
+  const orig = (file && file.name && file.name.toLowerCase() !== 'image.jpg') ? file.name : '';
+  const dot = orig.lastIndexOf('.');
+  if (orig && dot > 0) { base = sanitizePhotoBase(orig.slice(0, dot)); ext = orig.slice(dot + 1).toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'; }
+  if (!base) { const fl = getFloor(state.currentFloor); base = sanitizePhotoBase(((fl && fl.name) || 'Floor') + '-' + (w.label || 'window')) || 'window'; ext = (file && file.type === 'image/png') ? 'png' : 'jpg'; }
+  const used = allPhotoNames(); let name = base + '.' + ext, n = 2;
+  while (used.has(name.toLowerCase())) { name = base + '-' + n + '.' + ext; n++; }
+  return name;
+}
 async function addPhotoFiles(w, files, container) {
   for (const file of files) {
     if (!file.type || !file.type.startsWith('image/')) continue;
+    const id = genId();
+    const name = uniquePhotoName(w, file);
+    let thumb = '';
     try {
-      const id = genId();
-      const full = await scaleImage(file, 1600, 0.82);   // full-res → device only
+      const full = await scaleImage(file, 1600, 0.82);    // downscaled full-res → this device (IndexedDB)
       await putPhoto(id, full.blob);
-      const thumb = await scaleImage(file, 160, 0.5);     // ~8KB thumb → syncs on the window
-      if (!Array.isArray(w.photos)) w.photos = [];
-      w.photos.push({ id, thumb: thumb.dataURL, ts: Date.now() });
-      touch(w);
-    } catch (e) { console.warn('photo add failed', e); }
+      thumb = (await scaleImage(file, 160, 0.5)).dataURL;  // ~8KB thumb → syncs on the window
+    } catch (e) {
+      try { await putPhoto(id, file); } catch (_) {}       // undecodable here (e.g. HEIC) — keep original for the folder
+    }
+    if (!Array.isArray(w.photos)) w.photos = [];
+    w.photos.push({ id, name, thumb, ts: Date.now() });
+    touch(w);
   }
   scheduleSave();
   if (state.selectedWindowId === w.id) renderWindowInspector(container, true);
   renderWindows();
 }
-// Full-screen viewer: full-res if this device has it, else the enlarged synced thumbnail.
+function imgLoads(url) { return new Promise(res => { if (!url) return res(false); const t = new Image(); t.onload = () => res(true); t.onerror = () => res(false); t.src = url; }); }
+// Full-screen viewer: prefer the file in the local photos/ folder, else this device's copy, else the synced thumbnail.
 async function openPhoto(id, w) {
-  const meta = (w.photos || []).find(x => x.id === id);
-  const full = await getPhoto(id);
-  const src = full ? URL.createObjectURL(full) : (meta ? meta.thumb : '');
+  const meta = (w.photos || []).find(x => x.id === id) || {};
+  const folderSrc = photoFolderSrc(meta.name);
+  const inFolder = await imgLoads(folderSrc);
+  const blob = inFolder ? null : await getPhoto(id);
+  let src, blobUrl = null, isThumb = false;
+  if (inFolder) src = folderSrc;
+  else if (blob) { blobUrl = URL.createObjectURL(blob); src = blobUrl; }
+  else { src = meta.thumb || ''; isThumb = true; }
   const ov = document.createElement('div'); ov.className = 'photo-lightbox';
-  ov.innerHTML = `<div class="pl-inner"><img src="${src}"${full ? '' : ' class="thumb-only"'}>${full ? '' : '<div class="pl-note">Full-size photo is on the device that took it — this is the synced thumbnail.</div>'}<button class="pl-close" type="button" title="Close">✕</button></div>`;
-  function close() { ov.remove(); if (full) URL.revokeObjectURL(src); document.removeEventListener('keydown', esc); }
+  ov.innerHTML = `<div class="pl-inner"><img src="${src}"${isThumb ? ' class="thumb-only"' : ''}>${meta.name ? `<div class="pl-name">${winEscHtml(meta.name)}</div>` : ''}${isThumb ? '<div class="pl-note">Full-size isn’t on this device — drop <b>' + winEscHtml(meta.name || 'the file') + '</b> into the app’s photos/ folder, or open on the device that has it.</div>' : ''}<div class="pl-actions"><button class="pl-save" type="button">⤓ Save file</button></div><button class="pl-close" type="button" title="Close">✕</button></div>`;
+  function close() { ov.remove(); if (blobUrl) URL.revokeObjectURL(blobUrl); document.removeEventListener('keydown', esc); }
   function esc(e) { if (e.key === 'Escape') close(); }
   ov.addEventListener('click', e => { if (e.target === ov || e.target.classList.contains('pl-close')) close(); });
+  ov.querySelector('.pl-save').addEventListener('click', async e => {
+    e.stopPropagation();
+    const b = await getPhoto(id); let u = b ? URL.createObjectURL(b) : (inFolder ? folderSrc : (meta.thumb || ''));
+    if (!u) return;
+    const a = document.createElement('a'); a.href = u; a.download = meta.name || 'photo.jpg';
+    document.body.appendChild(a); a.click(); a.remove();
+    if (b) setTimeout(() => URL.revokeObjectURL(u), 1500);
+  });
   document.addEventListener('keydown', esc);
   document.body.appendChild(ov);
 }
@@ -3312,7 +3351,7 @@ function windowPhotosHtml(w) {
       <label>Photos${ph.length ? ` <span class="wi-phcount">${ph.length}</span>` : ''}</label>
       <button class="wi-cam" data-act="photo" type="button">📷 Take photo / add</button>
       <input type="file" accept="image/*" multiple data-photoinput hidden>
-      ${ph.length ? `<div class="wi-phgrid">${ph.map(p => `<div class="wi-ph" data-phid="${p.id}"><img src="${p.thumb}" alt="window photo" loading="lazy"><span class="wi-ph-rm" data-phrm="${p.id}" title="Remove photo">✕</span></div>`).join('')}</div><div class="wi-phnote">Full-size saved on this device · thumbnails sync. Tap to view.</div>` : ''}
+      ${ph.length ? `<div class="wi-phgrid">${ph.map(p => `<div class="wi-ph" data-phid="${p.id}" title="${winEscAttr(p.name || '')}">${p.thumb ? `<img class="wi-ph-img" src="${p.thumb}" data-name="${winEscAttr(p.name || '')}" alt="${winEscAttr(p.name || 'window photo')}" loading="lazy">` : `<div class="wi-ph-noimg" data-name="${winEscAttr(p.name || '')}"><span class="wi-ph-ic">🖼️</span><span class="wi-ph-fn">${winEscHtml((p.name || '').slice(0, 16))}</span></div>`}<span class="wi-ph-rm" data-phrm="${p.id}" title="Remove photo">✕</span></div>`).join('')}</div><div class="wi-phnote">Filenames are saved &amp; synced. Copy the same files into a <b>photos/</b> folder beside the app and they load here automatically; otherwise the synced thumbnail shows. Tap a photo to view or save its file.</div>` : ''}
     </div>`;
 }
 
@@ -3606,6 +3645,16 @@ function wireWindowInspector(container, w) {
     delPhoto(id); touch(w); scheduleSave(); renderWindowInspector(container, true); renderWindows();
   }));
   container.querySelectorAll('.wi-ph').forEach(t => t.addEventListener('click', () => openPhoto(t.getAttribute('data-phid'), w)));
+  // If the matching file exists in the local photos/ folder, upgrade the tile to show it in place of the thumbnail.
+  container.querySelectorAll('.wi-ph [data-name]').forEach(el => {
+    const name = el.getAttribute('data-name'); if (!name) return;
+    const url = photoFolderSrc(name);
+    imgLoads(url).then(ok => {
+      if (!ok || !el.isConnected) return;
+      if (el.tagName === 'IMG') { el.src = url; }
+      else { const im = document.createElement('img'); im.className = 'wi-ph-img'; im.src = url; im.alt = name; im.loading = 'lazy'; im.setAttribute('data-name', name); el.replaceWith(im); }
+    });
+  });
   const rm = container.querySelector('[data-act="remove"]');
   if (rm) rm.addEventListener('click', () => { if (confirm(`Remove "${w.label}"?`)) deleteWindow(w.id); });
   const csv = container.querySelector('[data-act="csv"]');
@@ -3634,7 +3683,7 @@ function windowLiveRefresh(container, w) {
 
 function exportWindowsCsv() {
   const rows = [['Floor', 'Label', 'Type', 'Mount', 'Status', 'OrderW', 'OrderW_in', 'OrderH', 'OrderH_in', 'Depth_in', 'Square', 'Notes',
-    'Shade', 'Shade_Blackout', 'Shade_W', 'Shade_H', 'Shade_Mount', 'Shade_Power', 'Shade_Motor', 'Shade_Remote', 'Shade_Fabric', 'Shade_Valance', 'Shade_BottomBar', 'Shade_LightBlockers', 'Shade_RollType', 'Shade_MotorSide', 'Shade_OrderNo', 'Shade_Price', 'Photos']];
+    'Shade', 'Shade_Blackout', 'Shade_W', 'Shade_H', 'Shade_Mount', 'Shade_Power', 'Shade_Motor', 'Shade_Remote', 'Shade_Fabric', 'Shade_Valance', 'Shade_BottomBar', 'Shade_LightBlockers', 'Shade_RollType', 'Shade_MotorSide', 'Shade_OrderNo', 'Shade_Price', 'Photos', 'Photo_Files']];
   for (const f of getAllFloors()) {
     for (const w of (state.windows[f.id] || [])) {
       const o = windowOrder(w), st = windowStatus(w), sh = w.shade;
@@ -3648,7 +3697,7 @@ function exportWindowsCsv() {
         sh ? sh.mount : '', sh ? (sh.power === 'poe' ? 'PoE' : 'Battery') : '', sh ? shadeMotor(sh) : '',
         sh ? sh.remote : '', sh ? sh.fabric : '', sh ? sh.valance : '', sh ? sh.bottomBar : '', sh ? sh.lightBlockers : '',
         sh ? sh.rollType : '', sh ? sh.motorSide : '', sh ? (sh.orderNo || '') : '', sh ? (sh.price || '') : '',
-        (w.photos || []).length
+        (w.photos || []).length, (w.photos || []).map(p => p.name).filter(Boolean).join('; ')
       ]);
     }
   }

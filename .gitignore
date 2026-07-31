@@ -1,2 +1,5 @@
 .DS_Store
 .claude/settings.local.json
+# Local window photos — keep the folder + README, ignore the images
+photos/*
+!photos/README.md
