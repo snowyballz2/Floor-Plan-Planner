@@ -1,9 +1,10 @@
 # Window photos
 
-Full-size window photos are **not** synced (only a small thumbnail is). To see
-them full-size on your Mac, keep the actual image files in a folder and point the
-app at it. Filenames are what match a photo to its file — every photo shows its
-filename, and the app keeps names unique.
+Window photos sync at a **readable ~700px preview**, so you can view and zoom
+them on any device without extra steps. This folder is only for viewing photos at
+**full resolution** (or on a device that didn't take them). Filenames are what
+match a photo to its file — every photo shows its filename, and the app keeps
+names unique.
 
 ## Getting the files
 

@@ -346,12 +346,14 @@
   .photo-lightbox { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
   .photo-lightbox .pl-inner { position:relative; max-width:100%; max-height:100%; display:flex; flex-direction:column; align-items:center; gap:10px; }
   .photo-lightbox img { max-width:100%; max-height:86vh; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,.5); }
-  .photo-lightbox img.thumb-only { max-width:min(100%,420px); }
+  .photo-lightbox img.thumb-only { max-width:min(100%,760px); }
   .photo-lightbox .pl-note { color:#e5e7eb; font-size:12px; background:rgba(255,255,255,.12); padding:6px 12px; border-radius:8px; max-width:420px; text-align:center; line-height:1.4; }
   .photo-lightbox .pl-name { color:#fff; font-size:12px; font-weight:600; background:rgba(255,255,255,.14); padding:4px 12px; border-radius:6px; max-width:88vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .photo-lightbox .pl-actions { display:flex; gap:8px; }
   .photo-lightbox .pl-save { border:none; border-radius:8px; padding:9px 16px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; background:#2563eb; color:#fff; }
   .photo-lightbox .pl-hint { color:#cbd5e1; font-size:11px; opacity:.7; }
+  .storage-warn { position:fixed; left:12px; right:12px; bottom:12px; z-index:2000; background:#7f1d1d; color:#fff; border-radius:10px; padding:12px 14px; font-size:13px; line-height:1.4; display:flex; gap:12px; align-items:flex-start; box-shadow:0 8px 30px rgba(0,0,0,.4); max-width:640px; margin:0 auto; }
+  .storage-warn button { flex:0 0 auto; align-self:center; background:#fff; color:#7f1d1d; border:none; border-radius:7px; padding:7px 12px; font:inherit; font-weight:700; cursor:pointer; }
   .photo-lightbox img { will-change:transform; }
   .photo-lightbox .pl-close { position:absolute; top:-8px; right:-8px; width:34px; height:34px; border-radius:50%; background:#fff; border:none; font-size:16px; cursor:pointer; box-shadow:0 3px 10px rgba(0,0,0,.4); }
   .win-pin.warn { box-shadow: 0 0 0 3px var(--danger), var(--shadow); }
@@ -1649,6 +1651,15 @@ function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(save, 250);
 }
+let __quotaWarned = false;
+function isQuotaError(e) { return !!e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014 || /quota|exceeded/i.test(e.message || '')); }
+function warnStorageFull() {
+  if (__quotaWarned) return; __quotaWarned = true;
+  const b = document.createElement('div'); b.className = 'storage-warn';
+  b.innerHTML = `<span>⚠️ This device’s storage is full — recent changes (usually photos) aren’t being saved and may be lost on reload. Open a window’s <b>Photos</b>, tap a photo → <b>⤓ Save file</b> to keep it, then remove some in-app photos.</span><button type="button">Dismiss</button>`;
+  b.querySelector('button').addEventListener('click', () => b.remove());
+  document.body.appendChild(b);
+}
 async function save() {
   try {
     const data = {
@@ -1674,10 +1685,11 @@ async function save() {
       exportSel: state.exportSel,
       exportSelTs: state.exportSelTs,
     };
+    const json = JSON.stringify(data);
     if (window.storage && window.storage.set) {
-      await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+      try { await window.storage.set(STORAGE_KEY, json); } catch (e) { if (isQuotaError(e)) warnStorageFull(); else throw e; }
     } else {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+      try { localStorage.setItem(STORAGE_KEY, json); } catch (e) { if (isQuotaError(e)) warnStorageFull(); else console.warn('local save failed', e); }
     }
     scheduleAutoSync();
     pushHistory();
@@ -3357,7 +3369,7 @@ async function addPhotoFiles(w, files, container) {
     try {
       const full = await scaleImage(file, 2600, 0.85);    // high-res copy → this device (IndexedDB), zoomable in the viewer
       await putPhoto(id, full.blob);
-      thumb = (await scaleImage(file, 160, 0.5)).dataURL;  // ~8KB thumb → syncs on the window
+      thumb = (await scaleImage(file, 700, 0.62)).dataURL; // ~55KB readable preview → syncs on the window
     } catch (e) {
       try { await putPhoto(id, file); } catch (_) {}       // undecodable here (e.g. HEIC) — keep original for the folder
     }
@@ -3385,10 +3397,10 @@ async function openPhoto(id, w) {
   const r = await resolvePhotoSrc(meta);
   const isThumb = r.source === 'thumb';
   const noteHtml = isThumb
-    ? `<div class="pl-note">Full-size isn’t here yet — ${photoFolderLinked() ? 'this file isn’t in the linked folder' : 'click “Load photos folder” under Photos and pick the folder holding'} <b>${winEscHtml(meta.name || 'the file')}</b>, or open on the device that took it.</div>`
+    ? `<div class="pl-note">Synced preview — zoom to read. For full resolution, ${photoFolderLinked() ? 'add <b>' + winEscHtml(meta.name || 'this file') + '</b> to the linked folder' : 'link the photos folder under Photos'} or open on the device that took it.</div>`
     : '';
   const ov = document.createElement('div'); ov.className = 'photo-lightbox';
-  ov.innerHTML = `<div class="pl-inner"><img src="${r.url}"${isThumb ? ' class="thumb-only"' : ''}>${meta.name ? `<div class="pl-name">${winEscHtml(meta.name)}</div>` : ''}${noteHtml}${isThumb ? '' : '<div class="pl-hint">Tap image to zoom · drag to pan</div>'}<div class="pl-actions"><button class="pl-save" type="button">⤓ Save file</button></div><button class="pl-close" type="button" title="Close">✕</button></div>`;
+  ov.innerHTML = `<div class="pl-inner"><img src="${r.url}"${isThumb ? ' class="thumb-only"' : ''}>${meta.name ? `<div class="pl-name">${winEscHtml(meta.name)}</div>` : ''}${noteHtml}${r.url ? '<div class="pl-hint">Tap image to zoom · drag to pan</div>' : ''}<div class="pl-actions"><button class="pl-save" type="button">⤓ Save file</button></div><button class="pl-close" type="button" title="Close">✕</button></div>`;
   function close() { ov.remove(); if (r.revoke) URL.revokeObjectURL(r.url); document.removeEventListener('keydown', esc); }
   function esc(e) { if (e.key === 'Escape') close(); }
   ov.addEventListener('click', e => { if (e.target === ov || e.target.classList.contains('pl-close')) close(); });
@@ -3403,7 +3415,7 @@ async function openPhoto(id, w) {
   });
   // Tap image to cycle zoom (1× → 2.5× → 5×); drag to pan when zoomed — lets you read fine detail.
   const imgEl = ov.querySelector('.pl-inner img');
-  if (imgEl && !isThumb) {
+  if (imgEl && r.url) {
     let z = 1, tx = 0, ty = 0, drag = null, suppressClick = false;
     const applyZoom = () => { imgEl.style.transform = `translate(${tx}px,${ty}px) scale(${z})`; imgEl.style.cursor = z > 1 ? 'grab' : 'zoom-in'; };
     imgEl.style.touchAction = 'none'; imgEl.style.transition = 'transform .12s ease-out'; imgEl.style.cursor = 'zoom-in';
@@ -3428,7 +3440,7 @@ function windowPhotosHtml(w) {
   const ph = w.photos || [];
   const note = photoFolderLinked()
     ? `Showing full-size from <b>${winEscHtml(winPhotoFolder.label)}</b> when the file is there, else the synced thumbnail. Tap a photo to view or save its file.`
-    : `Full-size images aren’t synced (only thumbnails are). Put the same files in a folder on this Mac, click <b>Load photos folder</b> and pick it to see them full-size — nothing is uploaded. Tap a photo to save its file with the right name.`;
+    : `Photos sync at a readable size — tap one and zoom to check detail on any device. For full resolution, put the files in a folder on this Mac and click <b>Load photos folder</b> (nothing is uploaded).`;
   return `
     <div class="wi-field">
       <label>Photos${ph.length ? ` <span class="wi-phcount">${ph.length}</span>` : ''}</label>
