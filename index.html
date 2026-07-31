@@ -331,6 +331,11 @@
   .wi-ph-noimg .wi-ph-fn { font-size:8px; line-height:1.15; color:var(--ink-faint); word-break:break-all; }
   .wi-ph-rm { position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; background:rgba(17,24,39,.6); color:#fff; font-size:10px; display:flex; align-items:center; justify-content:center; }
   .wi-phnote { font-size:10px; color:var(--ink-faint); margin-top:6px; }
+  .wi-folder { display:flex; align-items:center; gap:8px; margin-top:9px; flex-wrap:wrap; }
+  .wi-folder.linked { justify-content:space-between; }
+  .wi-folder-lbl { font-size:11px; font-weight:600; color:var(--accent); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wi-folder-btn { font:inherit; font-size:11px; font-weight:600; padding:5px 10px; border:1px solid var(--border); border-radius:6px; background:var(--paper); color:var(--ink); cursor:pointer; }
+  .wi-folder-btn:hover { background:var(--paper-dim); }
   .wi-mgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
   .wi-mcell { min-width:0; }
   .wi-mlbl { display:block; font-size:10px; color:var(--ink-soft); margin-bottom:3px; text-align:center; }
@@ -3296,6 +3301,49 @@ function uniquePhotoName(w, file) {
   while (used.has(name.toLowerCase())) { name = base + '-' + n + '.' + ext; n++; }
   return name;
 }
+// ---- Local photos folder: view full-size images without syncing them ----
+// Live site (Safari): pick a folder each session (webkitdirectory, read locally, nothing uploaded).
+// Chrome/Edge/PWA: File System Access handle, remembered across visits.
+let winPhotoFolder = null;   // { kind:'mem'|'fsa', label, files?:Map<lowerName,File>, handle?, needsPermission? }
+let winFolderObjUrls = [];   // grid objectURLs to revoke on next inspector render
+function isLocalServer() { return location.hostname === 'localhost' || location.hostname === '127.0.0.1'; }
+function photoFolderLinked() { return !!(winPhotoFolder && (winPhotoFolder.kind === 'mem' || (winPhotoFolder.kind === 'fsa' && !winPhotoFolder.needsPermission))); }
+async function folderFile(name) {
+  if (!name || !photoFolderLinked()) return null;
+  try {
+    if (winPhotoFolder.kind === 'mem') return winPhotoFolder.files.get(name.toLowerCase()) || null;
+    const fh = await winPhotoFolder.handle.getFileHandle(name).catch(() => null);
+    return fh ? await fh.getFile() : null;
+  } catch (_) { return null; }
+}
+async function folderFileUrl(name) { const f = await folderFile(name); return f ? URL.createObjectURL(f) : null; }
+async function putFolderHandle(h) { try { const db = await photoDB(); await new Promise((res, rej) => { const tx = db.transaction('photos', 'readwrite'); tx.objectStore('photos').put(h, '__folder__'); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); } catch (_) {} }
+async function restorePhotoFolder() {
+  try {
+    const h = await getPhoto('__folder__');
+    if (h && h.queryPermission) { const p = await h.queryPermission({ mode: 'read' }); winPhotoFolder = { kind: 'fsa', handle: h, label: h.name, needsPermission: p !== 'granted' }; }
+  } catch (_) {}
+}
+async function linkPhotoFolder(container) {
+  if (winPhotoFolder && winPhotoFolder.kind === 'fsa' && winPhotoFolder.needsPermission && winPhotoFolder.handle.requestPermission) {
+    try { if (await winPhotoFolder.handle.requestPermission({ mode: 'read' }) === 'granted') { winPhotoFolder.needsPermission = false; return refreshPhotoFolderUI(container); } } catch (_) {}
+  }
+  if (window.showDirectoryPicker) {
+    try { const h = await window.showDirectoryPicker({ id: 'floorplan-photos', mode: 'read' }); winPhotoFolder = { kind: 'fsa', handle: h, label: h.name }; putFolderHandle(h); }
+    catch (_) { return; }   // user cancelled
+    refreshPhotoFolderUI(container);
+  } else {
+    const inp = container.querySelector('[data-folderinput]'); if (inp) inp.click();
+  }
+}
+function loadFolderFiles(fileList, container) {
+  const files = new Map();
+  for (const f of fileList) if (f.type && f.type.startsWith('image/')) files.set(f.name.toLowerCase(), f);
+  const rp = fileList[0] && fileList[0].webkitRelativePath ? fileList[0].webkitRelativePath.split('/')[0] : '';
+  winPhotoFolder = { kind: 'mem', files, label: rp || 'photos' };
+  refreshPhotoFolderUI(container);
+}
+function refreshPhotoFolderUI(container) { const w = state.selectedWindowId ? findWindow(state.selectedWindowId) : null; if (w && container) renderWindowInspector(container, true); }
 async function addPhotoFiles(w, files, container) {
   for (const file of files) {
     if (!file.type || !file.type.startsWith('image/')) continue;
@@ -3318,24 +3366,32 @@ async function addPhotoFiles(w, files, container) {
   renderWindows();
 }
 function imgLoads(url) { return new Promise(res => { if (!url) return res(false); const t = new Image(); t.onload = () => res(true); t.onerror = () => res(false); t.src = url; }); }
-// Full-screen viewer: prefer the file in the local photos/ folder, else this device's copy, else the synced thumbnail.
+// Best full-size source for a photo: linked folder → local server's photos/ → this device → synced thumbnail.
+async function resolvePhotoSrc(meta) {
+  let url = await folderFileUrl(meta.name);
+  if (url) return { url, revoke: true, source: 'folder' };
+  if (isLocalServer()) { const http = photoFolderSrc(meta.name); if (await imgLoads(http)) return { url: http, revoke: false, source: 'http' }; }
+  const blob = await getPhoto(meta.id);
+  if (blob) return { url: URL.createObjectURL(blob), revoke: true, source: 'device' };
+  return { url: meta.thumb || '', revoke: false, source: 'thumb' };
+}
+// Full-screen viewer.
 async function openPhoto(id, w) {
   const meta = (w.photos || []).find(x => x.id === id) || {};
-  const folderSrc = photoFolderSrc(meta.name);
-  const inFolder = await imgLoads(folderSrc);
-  const blob = inFolder ? null : await getPhoto(id);
-  let src, blobUrl = null, isThumb = false;
-  if (inFolder) src = folderSrc;
-  else if (blob) { blobUrl = URL.createObjectURL(blob); src = blobUrl; }
-  else { src = meta.thumb || ''; isThumb = true; }
+  const r = await resolvePhotoSrc(meta);
+  const isThumb = r.source === 'thumb';
+  const noteHtml = isThumb
+    ? `<div class="pl-note">Full-size isn’t here yet — ${photoFolderLinked() ? 'this file isn’t in the linked folder' : 'click “Load photos folder” under Photos and pick the folder holding'} <b>${winEscHtml(meta.name || 'the file')}</b>, or open on the device that took it.</div>`
+    : '';
   const ov = document.createElement('div'); ov.className = 'photo-lightbox';
-  ov.innerHTML = `<div class="pl-inner"><img src="${src}"${isThumb ? ' class="thumb-only"' : ''}>${meta.name ? `<div class="pl-name">${winEscHtml(meta.name)}</div>` : ''}${isThumb ? '<div class="pl-note">Full-size isn’t on this device — drop <b>' + winEscHtml(meta.name || 'the file') + '</b> into the app’s photos/ folder, or open on the device that has it.</div>' : ''}<div class="pl-actions"><button class="pl-save" type="button">⤓ Save file</button></div><button class="pl-close" type="button" title="Close">✕</button></div>`;
-  function close() { ov.remove(); if (blobUrl) URL.revokeObjectURL(blobUrl); document.removeEventListener('keydown', esc); }
+  ov.innerHTML = `<div class="pl-inner"><img src="${r.url}"${isThumb ? ' class="thumb-only"' : ''}>${meta.name ? `<div class="pl-name">${winEscHtml(meta.name)}</div>` : ''}${noteHtml}<div class="pl-actions"><button class="pl-save" type="button">⤓ Save file</button></div><button class="pl-close" type="button" title="Close">✕</button></div>`;
+  function close() { ov.remove(); if (r.revoke) URL.revokeObjectURL(r.url); document.removeEventListener('keydown', esc); }
   function esc(e) { if (e.key === 'Escape') close(); }
   ov.addEventListener('click', e => { if (e.target === ov || e.target.classList.contains('pl-close')) close(); });
   ov.querySelector('.pl-save').addEventListener('click', async e => {
     e.stopPropagation();
-    const b = await getPhoto(id); let u = b ? URL.createObjectURL(b) : (inFolder ? folderSrc : (meta.thumb || ''));
+    const b = (await getPhoto(id)) || (await folderFile(meta.name));
+    let u = b ? URL.createObjectURL(b) : (meta.thumb || '');
     if (!u) return;
     const a = document.createElement('a'); a.href = u; a.download = meta.name || 'photo.jpg';
     document.body.appendChild(a); a.click(); a.remove();
@@ -3344,14 +3400,26 @@ async function openPhoto(id, w) {
   document.addEventListener('keydown', esc);
   document.body.appendChild(ov);
 }
+function photoFolderCtlHtml() {
+  if (photoFolderLinked()) {
+    const cnt = winPhotoFolder.kind === 'mem' ? ` · ${winPhotoFolder.files.size}` : '';
+    return `<div class="wi-folder linked"><span class="wi-folder-lbl">📁 ${winEscHtml(winPhotoFolder.label)}${cnt} ✓</span><button class="wi-folder-btn" data-act="linkfolder" type="button">Change…</button></div>`;
+  }
+  const reconnect = winPhotoFolder && winPhotoFolder.needsPermission;
+  return `<div class="wi-folder"><button class="wi-folder-btn" data-act="linkfolder" type="button">📁 ${reconnect ? 'Reconnect' : 'Load'} photos folder…</button></div>`;
+}
 function windowPhotosHtml(w) {
   const ph = w.photos || [];
+  const note = photoFolderLinked()
+    ? `Showing full-size from <b>${winEscHtml(winPhotoFolder.label)}</b> when the file is there, else the synced thumbnail. Tap a photo to view or save its file.`
+    : `Full-size images aren’t synced (only thumbnails are). Put the same files in a folder on this Mac, click <b>Load photos folder</b> and pick it to see them full-size — nothing is uploaded. Tap a photo to save its file with the right name.`;
   return `
     <div class="wi-field">
       <label>Photos${ph.length ? ` <span class="wi-phcount">${ph.length}</span>` : ''}</label>
       <button class="wi-cam" data-act="photo" type="button">📷 Take photo / add</button>
       <input type="file" accept="image/*" multiple data-photoinput hidden>
-      ${ph.length ? `<div class="wi-phgrid">${ph.map(p => `<div class="wi-ph" data-phid="${p.id}" title="${winEscAttr(p.name || '')}">${p.thumb ? `<img class="wi-ph-img" src="${p.thumb}" data-name="${winEscAttr(p.name || '')}" alt="${winEscAttr(p.name || 'window photo')}" loading="lazy">` : `<div class="wi-ph-noimg" data-name="${winEscAttr(p.name || '')}"><span class="wi-ph-ic">🖼️</span><span class="wi-ph-fn">${winEscHtml((p.name || '').slice(0, 16))}</span></div>`}<span class="wi-ph-rm" data-phrm="${p.id}" title="Remove photo">✕</span></div>`).join('')}</div><div class="wi-phnote">Filenames are saved &amp; synced. Copy the same files into a <b>photos/</b> folder beside the app and they load here automatically; otherwise the synced thumbnail shows. Tap a photo to view or save its file.</div>` : ''}
+      <input type="file" webkitdirectory multiple data-folderinput hidden>
+      ${ph.length ? `${photoFolderCtlHtml()}<div class="wi-phgrid">${ph.map(p => `<div class="wi-ph" data-phid="${p.id}" title="${winEscAttr(p.name || '')}">${p.thumb ? `<img class="wi-ph-img" src="${p.thumb}" data-name="${winEscAttr(p.name || '')}" alt="${winEscAttr(p.name || 'window photo')}" loading="lazy">` : `<div class="wi-ph-noimg" data-name="${winEscAttr(p.name || '')}"><span class="wi-ph-ic">🖼️</span><span class="wi-ph-fn">${winEscHtml((p.name || '').slice(0, 16))}</span></div>`}<span class="wi-ph-rm" data-phrm="${p.id}" title="Remove photo">✕</span></div>`).join('')}</div><div class="wi-phnote">${note}</div>` : ''}
     </div>`;
 }
 
@@ -3638,6 +3706,11 @@ function wireWindowInspector(container, w) {
     camBtn.addEventListener('click', () => photoInput.click());
     photoInput.addEventListener('change', () => { const fs = photoInput.files ? [...photoInput.files] : []; photoInput.value = ''; if (fs.length) addPhotoFiles(w, fs, container); });
   }
+  // link/pick a local photos folder to view full-size images (Safari-live: folder picker; Chrome: remembered handle)
+  const linkBtn = container.querySelector('[data-act="linkfolder"]');
+  if (linkBtn) linkBtn.addEventListener('click', () => linkPhotoFolder(container));
+  const folderInput = container.querySelector('[data-folderinput]');
+  if (folderInput) folderInput.addEventListener('change', () => { const fs = folderInput.files ? [...folderInput.files] : []; folderInput.value = ''; if (fs.length) loadFolderFiles(fs, container); });
   container.querySelectorAll('[data-phrm]').forEach(x => x.addEventListener('click', (e) => {
     e.stopPropagation();
     const id = x.getAttribute('data-phrm');
@@ -3645,15 +3718,16 @@ function wireWindowInspector(container, w) {
     delPhoto(id); touch(w); scheduleSave(); renderWindowInspector(container, true); renderWindows();
   }));
   container.querySelectorAll('.wi-ph').forEach(t => t.addEventListener('click', () => openPhoto(t.getAttribute('data-phid'), w)));
-  // If the matching file exists in the local photos/ folder, upgrade the tile to show it in place of the thumbnail.
-  container.querySelectorAll('.wi-ph [data-name]').forEach(el => {
+  // Upgrade each thumbnail to the real image when its file is in the linked folder (or served photos/ on localhost).
+  winFolderObjUrls.forEach(u => URL.revokeObjectURL(u)); winFolderObjUrls = [];
+  container.querySelectorAll('.wi-ph [data-name]').forEach(async el => {
     const name = el.getAttribute('data-name'); if (!name) return;
-    const url = photoFolderSrc(name);
-    imgLoads(url).then(ok => {
-      if (!ok || !el.isConnected) return;
-      if (el.tagName === 'IMG') { el.src = url; }
-      else { const im = document.createElement('img'); im.className = 'wi-ph-img'; im.src = url; im.alt = name; im.loading = 'lazy'; im.setAttribute('data-name', name); el.replaceWith(im); }
-    });
+    let url = await folderFileUrl(name);
+    if (url) winFolderObjUrls.push(url);
+    else if (isLocalServer()) { const http = photoFolderSrc(name); if (await imgLoads(http)) url = http; }
+    if (!url || !el.isConnected) return;
+    if (el.tagName === 'IMG') { el.src = url; }
+    else { const im = document.createElement('img'); im.className = 'wi-ph-img'; im.src = url; im.alt = name; im.loading = 'lazy'; im.setAttribute('data-name', name); el.replaceWith(im); }
   });
   const rm = container.querySelector('[data-act="remove"]');
   if (rm) rm.addEventListener('click', () => { if (confirm(`Remove "${w.label}"?`)) deleteWindow(w.id); });
@@ -5383,6 +5457,7 @@ document.getElementById('sync-clear').addEventListener('click', () => {
 // ============================================================
 (async function init() {
   await load();
+  restorePhotoFolder();   // re-attach a remembered photos folder (Chrome/Edge File System Access; no-op in Safari)
   pushHistory();   // initial snapshot — undo can revert the first mutation back to load state
   renderSidebar();
   // On phones, start with both side panels collapsed so the plan gets full width.

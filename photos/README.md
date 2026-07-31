@@ -1,26 +1,34 @@
-# photos/
+# Window photos
 
-Drop window photo files here (any image format) to have them show full-size in
-the Floor Planner app on this Mac.
+Full-size window photos are **not** synced (only a small thumbnail is). To see
+them full-size on your Mac, keep the actual image files in a folder and point the
+app at it. Filenames are what match a photo to its file — every photo shows its
+filename, and the app keeps names unique.
 
-## How it works
+## Getting the files
 
-- Every photo you add in the app (camera or upload) gets a **filename**, shown in
-  its tooltip and saved/synced with the plan (the file itself is **not** synced —
-  only a small thumbnail is).
-- When the app is opened from this folder's local server, it looks for a file of
-  that exact name in `photos/`. If it's here, the real full-size image is shown
-  in the grid and the viewer. If not, the synced thumbnail is used.
+- **Uploaded photos** already have their filename — copy those same files into the
+  folder (AirDrop, iCloud Drive, cable…).
+- **Photos taken in the app**, or anything only on another device: open the photo
+  in the app, tap **⤓ Save file** (downloads with the correct name), then move it
+  into the folder.
 
-## Getting the files here
+## Viewing them full-size
 
-- **Uploaded photos** already have their original filename — copy those same
-  files into this folder (AirDrop, iCloud Drive, cable, etc.).
-- **Photos taken in the app** (or anything you only have on another device): open
-  the photo in the app, tap **⤓ Save file**, and it downloads with the correct
-  name — then move it into this folder.
+**Live site in Safari (or any browser):** open a window's **Photos** section, click
+**Load photos folder**, and pick the folder holding the files. The images load
+locally for that session — nothing is uploaded (Safari's "upload" warning is just
+its standard wording for folder access; the app only reads the files). You re-pick
+the folder each time you reopen the app.
 
-Names must match exactly. The app avoids duplicate names automatically.
+**Chrome / Edge, or the app installed to the dock (PWA):** same **Load photos
+folder** button, but the choice is remembered and re-used on later visits.
 
-Files in this folder (other than this README) are git-ignored, so they stay on
-your machine and are never pushed to the public site.
+**Running the local dev server** (`floorplan` preview): drop the files into *this*
+`photos/` folder next to `index.html` and they're picked up automatically — no
+button needed.
+
+---
+
+Files in this folder (other than this README) are git-ignored, so any images you
+drop here stay on your machine and are never pushed to the public site.
