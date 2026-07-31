@@ -319,6 +319,22 @@
   .wsh-w input { flex: 1; }
   .wsh-w select { flex: 0 0 auto; width: 64px; }
   .wsh-mini { font-size: 10px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 3px; }
+  /* window photos */
+  .wi-cam { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:10px; border:1.5px dashed #b9c6e6; border-radius:9px; background:#f5f8ff; color:var(--accent); font:inherit; font-weight:700; font-size:12.5px; cursor:pointer; }
+  .wi-cam:active { background:#eaf0ff; }
+  .wi-phcount { font-size:10px; font-weight:700; color:#fff; background:var(--accent); border-radius:20px; padding:1px 6px; }
+  .wi-phgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:9px; }
+  .wi-ph { position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; border:1px solid var(--border); cursor:pointer; background:var(--paper-dim); }
+  .wi-ph img { width:100%; height:100%; object-fit:cover; display:block; }
+  .wi-ph-rm { position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; background:rgba(17,24,39,.6); color:#fff; font-size:10px; display:flex; align-items:center; justify-content:center; }
+  .wi-phnote { font-size:10px; color:var(--ink-faint); margin-top:6px; }
+  .win-photo-badge { position:absolute; bottom:-5px; right:-5px; min-width:14px; height:14px; padding:0 3px; border-radius:8px; background:#0891b2; color:#fff; font-size:9px; font-weight:700; line-height:1; display:flex; align-items:center; justify-content:center; border:1.5px solid var(--paper, #fff); }
+  .photo-lightbox { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .photo-lightbox .pl-inner { position:relative; max-width:100%; max-height:100%; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .photo-lightbox img { max-width:100%; max-height:86vh; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  .photo-lightbox img.thumb-only { max-width:min(100%,420px); }
+  .photo-lightbox .pl-note { color:#e5e7eb; font-size:12px; background:rgba(255,255,255,.12); padding:6px 12px; border-radius:8px; max-width:420px; text-align:center; line-height:1.4; }
+  .photo-lightbox .pl-close { position:absolute; top:-8px; right:-8px; width:34px; height:34px; border-radius:50%; background:#fff; border:none; font-size:16px; cursor:pointer; box-shadow:0 3px 10px rgba(0,0,0,.4); }
   .win-pin.warn { box-shadow: 0 0 0 3px var(--danger), var(--shadow); }
   .win-pin.sel { outline: 3px solid var(--accent-soft); outline-offset: 2px; z-index: 8; }
   .win-pin:active { cursor: grabbing; }
@@ -3205,6 +3221,79 @@ function newShade(w) {
 function shadeDim(whole, frac) { return (whole === '' || whole == null) ? '?' : whole + (frac && frac !== '0' ? ' ' + frac : '') + '"'; }
 function shadeDims(sh) { return sh ? shadeDim(sh.wWhole, sh.wFrac) + ' × ' + shadeDim(sh.hWhole, sh.hFrac) : ''; }
 
+// ---- Window photos: full-res lives in IndexedDB (device-local, no 5MB cap);
+// a small ~8KB thumbnail rides on the window object so every device sees it. ----
+let _photoDB = null;
+function photoDB() {
+  if (_photoDB) return _photoDB;
+  _photoDB = new Promise((resolve, reject) => {
+    let req; try { req = indexedDB.open('floorplan-photos', 1); } catch (e) { return reject(e); }
+    req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains('photos')) req.result.createObjectStore('photos'); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return _photoDB;
+}
+async function putPhoto(id, blob) { const db = await photoDB(); return new Promise((res, rej) => { const tx = db.transaction('photos', 'readwrite'); tx.objectStore('photos').put(blob, id); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+async function getPhoto(id) { try { const db = await photoDB(); return await new Promise(res => { const r = db.transaction('photos', 'readonly').objectStore('photos').get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); }); } catch (_) { return null; } }
+async function delPhoto(id) { try { const db = await photoDB(); db.transaction('photos', 'readwrite').objectStore('photos').delete(id); } catch (_) {} }
+// Downscale a File/Blob to a capped-edge JPEG → { blob, dataURL }.
+function scaleImage(file, maxEdge, quality) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file); const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const s = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      const cw = Math.max(1, Math.round(img.width * s)), ch = Math.max(1, Math.round(img.height * s));
+      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      c.getContext('2d').drawImage(img, 0, 0, cw, ch);
+      c.toBlob(b => resolve({ blob: b, dataURL: c.toDataURL('image/jpeg', quality) }), 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image load failed')); };
+    img.src = url;
+  });
+}
+async function addPhotoFiles(w, files, container) {
+  for (const file of files) {
+    if (!file.type || !file.type.startsWith('image/')) continue;
+    try {
+      const id = genId();
+      const full = await scaleImage(file, 1600, 0.82);   // full-res → device only
+      await putPhoto(id, full.blob);
+      const thumb = await scaleImage(file, 160, 0.5);     // ~8KB thumb → syncs on the window
+      if (!Array.isArray(w.photos)) w.photos = [];
+      w.photos.push({ id, thumb: thumb.dataURL, ts: Date.now() });
+      touch(w);
+    } catch (e) { console.warn('photo add failed', e); }
+  }
+  scheduleSave();
+  if (state.selectedWindowId === w.id) renderWindowInspector(container, true);
+  renderWindows();
+}
+// Full-screen viewer: full-res if this device has it, else the enlarged synced thumbnail.
+async function openPhoto(id, w) {
+  const meta = (w.photos || []).find(x => x.id === id);
+  const full = await getPhoto(id);
+  const src = full ? URL.createObjectURL(full) : (meta ? meta.thumb : '');
+  const ov = document.createElement('div'); ov.className = 'photo-lightbox';
+  ov.innerHTML = `<div class="pl-inner"><img src="${src}"${full ? '' : ' class="thumb-only"'}>${full ? '' : '<div class="pl-note">Full-size photo is on the device that took it — this is the synced thumbnail.</div>'}<button class="pl-close" type="button" title="Close">✕</button></div>`;
+  function close() { ov.remove(); if (full) URL.revokeObjectURL(src); document.removeEventListener('keydown', esc); }
+  function esc(e) { if (e.key === 'Escape') close(); }
+  ov.addEventListener('click', e => { if (e.target === ov || e.target.classList.contains('pl-close')) close(); });
+  document.addEventListener('keydown', esc);
+  document.body.appendChild(ov);
+}
+function windowPhotosHtml(w) {
+  const ph = w.photos || [];
+  return `
+    <div class="wi-field">
+      <label>Photos${ph.length ? ` <span class="wi-phcount">${ph.length}</span>` : ''}</label>
+      <button class="wi-cam" data-act="photo" type="button">📷 Take photo / add</button>
+      <input type="file" accept="image/*" multiple data-photoinput hidden>
+      ${ph.length ? `<div class="wi-phgrid">${ph.map(p => `<div class="wi-ph" data-phid="${p.id}"><img src="${p.thumb}" alt="window photo" loading="lazy"><span class="wi-ph-rm" data-phrm="${p.id}" title="Remove photo">✕</span></div>`).join('')}</div><div class="wi-phnote">Full-size saved on this device · thumbnails sync. Tap to view.</div>` : ''}
+    </div>`;
+}
+
 function currentWindows() { return state.windows[state.currentFloor] || []; }
 function findWindow(id) { return currentWindows().find(w => w.id === id); }
 function winEscHtml(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
@@ -3222,7 +3311,7 @@ function newWindow(x, y) {
     depth: null, diag: [null, null],
     overlapW: 6, overlapH: 3,
     notes: '', _ts: Date.now(),
-    status: 'unconfirmed', shade: null,
+    status: 'unconfirmed', shade: null, photos: [],
   };
 }
 
@@ -3299,6 +3388,7 @@ function renderWindows() {
     pin.style.left = (f.offsetX + w.x * f.pxPerFt) + 'px';
     pin.style.top  = (f.offsetY + w.y * f.pxPerFt) + 'px';
     pin.textContent = i + 1;
+    if ((w.photos || []).length) { const pb = document.createElement('span'); pb.className = 'win-photo-badge'; pb.textContent = (w.photos || []).length; pin.appendChild(pb); }
     pin.title = w.label;
     layer.appendChild(pin);
   });
@@ -3413,6 +3503,7 @@ function renderWindowInspector(container, force) {
       <div class="wi-flag bad" ${st.square === false ? '' : 'hidden'}>⚠ Out of square — diagonals differ by ${st.square === false ? inchFrac(Math.abs(winFilled(w.diag)[0] - winFilled(w.diag)[1])) : ''}. Consider outside mount.</div>
       <div class="wi-flag good" ${st.square === true ? '' : 'hidden'}>✓ Square within tolerance (≤ 1/2").</div>
     </div>
+    ${windowPhotosHtml(w)}
     <div class="wi-field">
       <label>Notes</label>
       <textarea class="wi-notes" data-f="notes" placeholder="e.g. crank handle on left; west-facing">${winEscHtml(w.notes || '')}</textarea>
@@ -3479,6 +3570,20 @@ function wireWindowInspector(container, w) {
     const set = () => { if (w.shade) { w.shade[key] = el.value; touch(w); scheduleSave(); } };
     el.addEventListener('input', set); el.addEventListener('change', set);
   });
+  // photos: camera / library button + thumbnail grid (tap to view, ✕ to remove)
+  const camBtn = container.querySelector('[data-act="photo"]');
+  const photoInput = container.querySelector('[data-photoinput]');
+  if (camBtn && photoInput) {
+    camBtn.addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', () => { const fs = photoInput.files ? [...photoInput.files] : []; photoInput.value = ''; if (fs.length) addPhotoFiles(w, fs, container); });
+  }
+  container.querySelectorAll('[data-phrm]').forEach(x => x.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const id = x.getAttribute('data-phrm');
+    w.photos = (w.photos || []).filter(p => p.id !== id);
+    delPhoto(id); touch(w); scheduleSave(); renderWindowInspector(container, true); renderWindows();
+  }));
+  container.querySelectorAll('.wi-ph').forEach(t => t.addEventListener('click', () => openPhoto(t.getAttribute('data-phid'), w)));
   const rm = container.querySelector('[data-act="remove"]');
   if (rm) rm.addEventListener('click', () => { if (confirm(`Remove "${w.label}"?`)) deleteWindow(w.id); });
   const csv = container.querySelector('[data-act="csv"]');
@@ -3507,7 +3612,7 @@ function windowLiveRefresh(container, w) {
 
 function exportWindowsCsv() {
   const rows = [['Floor', 'Label', 'Type', 'Mount', 'Status', 'OrderW', 'OrderW_in', 'OrderH', 'OrderH_in', 'Depth_in', 'Square', 'Notes',
-    'Shade', 'Shade_Blackout', 'Shade_W', 'Shade_H', 'Shade_Mount', 'Shade_Power', 'Shade_Motor', 'Shade_Remote', 'Shade_Fabric', 'Shade_Valance', 'Shade_BottomBar', 'Shade_LightBlockers', 'Shade_RollType', 'Shade_MotorSide', 'Shade_OrderNo', 'Shade_Price']];
+    'Shade', 'Shade_Blackout', 'Shade_W', 'Shade_H', 'Shade_Mount', 'Shade_Power', 'Shade_Motor', 'Shade_Remote', 'Shade_Fabric', 'Shade_Valance', 'Shade_BottomBar', 'Shade_LightBlockers', 'Shade_RollType', 'Shade_MotorSide', 'Shade_OrderNo', 'Shade_Price', 'Photos']];
   for (const f of getAllFloors()) {
     for (const w of (state.windows[f.id] || [])) {
       const o = windowOrder(w), st = windowStatus(w), sh = w.shade;
@@ -3520,7 +3625,8 @@ function exportWindowsCsv() {
         sh ? sh.blackout + '%' : '', sh ? shadeDim(sh.wWhole, sh.wFrac) : '', sh ? shadeDim(sh.hWhole, sh.hFrac) : '',
         sh ? sh.mount : '', sh ? (sh.power === 'poe' ? 'PoE' : 'Battery') : '', sh ? shadeMotor(sh) : '',
         sh ? sh.remote : '', sh ? sh.fabric : '', sh ? sh.valance : '', sh ? sh.bottomBar : '', sh ? sh.lightBlockers : '',
-        sh ? sh.rollType : '', sh ? sh.motorSide : '', sh ? (sh.orderNo || '') : '', sh ? (sh.price || '') : ''
+        sh ? sh.rollType : '', sh ? sh.motorSide : '', sh ? (sh.orderNo || '') : '', sh ? (sh.price || '') : '',
+        (w.photos || []).length
       ]);
     }
   }
@@ -4335,7 +4441,7 @@ function renderSummary() {
         const size = o ? `${inchFrac(o.ow)} × ${inchFrac(o.oh)}` : '<span class="sum-dim">not measured</span>';
         const triv = arr => arr.map(v => v == null ? '—' : inchFrac(v)).join(' · ');
         html += `<details class="sum-item">
-          <summary><span class="sum-num win">${i + 1}</span><span class="sum-label">${winEscHtml(w.label)}</span><span class="sum-meta"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${wsc};margin-right:4px;vertical-align:0"></span>${WIN_STATUS_LABEL[winStatus(w)]} · ${size}${o ? ` · ${w.mount}` : ''}${sh ? ' · shade' : ''}${st.square === false ? ' · <span class="sum-warn">out of square</span>' : ''}</span></summary>
+          <summary><span class="sum-num win">${i + 1}</span><span class="sum-label">${winEscHtml(w.label)}</span><span class="sum-meta"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${wsc};margin-right:4px;vertical-align:0"></span>${WIN_STATUS_LABEL[winStatus(w)]} · ${size}${o ? ` · ${w.mount}` : ''}${sh ? ' · shade' : ''}${(w.photos || []).length ? ` · 📷 ${(w.photos || []).length}` : ''}${st.square === false ? ' · <span class="sum-warn">out of square</span>' : ''}</span></summary>
           <div class="sum-detail">
             <div class="sum-kv"><b>Type / mount</b><span>${winEscHtml(w.type)} · ${w.mount}</span></div>
             <div class="sum-kv"><b>Widths (t/m/b)</b><span>${triv(w.w)}</span></div>
