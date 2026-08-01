@@ -305,8 +305,8 @@
   .wi-status-bar { display: flex; gap: 3px; margin-top: 6px; }
   .wi-status-bar .sb { flex: 1; height: 5px; border-radius: 3px; background: var(--border); }
   .wsh-sec { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  .wsh-head { display: flex; align-items: center; gap: 8px; padding: 9px 11px; background: var(--paper-dim); border-bottom: 1px solid var(--border); font-weight: 700; font-size: 12.5px; }
-  .wsh-head .wsh-t { flex: 1; }
+  .wsh-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px 11px; background: var(--paper-dim); border-bottom: 1px solid var(--border); font-weight: 700; font-size: 12.5px; }
+  .wsh-head .wsh-t { flex: 1 1 auto; min-width: 0; }
   .wsh-body { padding: 10px 11px; }
   .wsh-body > label { display: block; margin-bottom: 3px; }
   .wsh-body input, .wsh-body select { width: 100%; font: inherit; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); }
@@ -3561,7 +3561,7 @@ function windowShadeHtml(w) {
       <div class="wsh-head">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="3.5" rx="1"/><path d="M6 6.5v10a2 2 0 002 2h8a2 2 0 002-2v-10"/><line x1="8.5" y1="18.5" x2="15.5" y2="18.5"/></svg>
         <span class="wsh-t">Motorized shade${on ? ' · SmartWings' : ''}</span>
-        <div class="wi-seg" data-shtoggle style="width:120px;flex:0 0 auto">
+        <div class="wi-seg" data-shtoggle style="flex:1 1 100%">
           <button data-shon="0" class="${on ? '' : 'on'}">None</button>
           <button data-shon="1" class="${on ? 'on' : ''}">Shade</button>
         </div>
