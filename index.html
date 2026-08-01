@@ -311,13 +311,15 @@
   .wsh-body > label { display: block; margin-bottom: 3px; }
   .wsh-body input, .wsh-body select { width: 100%; font: inherit; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); }
   .wsh-grp { font-size: 10px; font-weight: 700; color: var(--ink-faint); letter-spacing: .05em; text-transform: uppercase; margin: 13px 0 7px; padding-bottom: 3px; border-bottom: 1px dashed var(--border); }
-  .wsh-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* Two-up only when each column can still hold a real control; otherwise stack. */
+  .wsh-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
   .wsh-2 > div { min-width: 0; }
   .wsh-derived { font-size: 12px; color: var(--ink-soft); padding: 7px 9px; background: var(--paper-dim); border: 1px solid var(--border); border-radius: 6px; }
   .wsh-hint { font-size: 10.5px; color: var(--ink-faint); margin-top: 6px; }
   .wsh-w { display: flex; gap: 5px; }
-  .wsh-w input { flex: 1; }
-  .wsh-w select { flex: 0 0 auto; width: 64px; }
+  .wsh-w input { flex: 1 1 auto; min-width: 0; text-align: center; }
+  .wsh-w input[type=number]::-webkit-inner-spin-button, .wsh-w input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .wsh-w select { flex: 0 0 58px; width: 58px; padding-left: 4px; padding-right: 2px; }
   .wsh-mini { font-size: 10px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 3px; }
   /* window photos */
   .wi-cam { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:10px; border:1.5px dashed #b9c6e6; border-radius:9px; background:#f5f8ff; color:var(--accent); font:inherit; font-weight:700; font-size:12.5px; cursor:pointer; }
@@ -3567,8 +3569,8 @@ function windowShadeHtml(w) {
         </div>
       </div>
       ${on ? `<div class="wsh-body">
-        <label>Blackout</label>
-        ${seg('blackout', sh.blackout, [['70', '70% Essential'], ['100', '100% Essential']])}
+        <label>Blackout — Essential</label>
+        ${seg('blackout', sh.blackout, [['70', '70%'], ['100', '100%']])}
         <div class="wsh-2" style="margin-top:8px">
           <div><div class="wsh-mini">Order #</div><input data-shf="orderNo" value="${winEscAttr(sh.orderNo)}"></div>
           <div><div class="wsh-mini">Price</div><input data-shf="price" value="${winEscAttr(sh.price)}" placeholder="$"></div>
