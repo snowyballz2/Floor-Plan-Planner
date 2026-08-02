@@ -214,6 +214,20 @@
   .ovl-row input[type=range] { width: 100%; margin-top: 7px; accent-color: var(--accent); cursor: pointer; }
   .ovl-row.off { opacity: .45; }
   .ovl-row.off input[type=range] { pointer-events: none; }
+  .ovl-row.editing { background: var(--paper-dim); border-radius: 8px; padding: 9px 8px; margin: 0 -8px; }
+  .ovl-adj { width: 100%; margin-top: 7px; padding: 6px 8px; font: inherit; font-size: 11px; font-weight: 600; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink-soft); cursor: pointer; }
+  .ovl-adj:hover { background: var(--paper-dim); color: var(--ink); }
+  .ovl-adj.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ovl-adjbox { margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--border); }
+  .ovl-arow { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--ink-soft); margin-top: 7px; }
+  .ovl-arow b { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .ovl-flips { display: flex; gap: 5px; }
+  .ovl-fbtn { width: 30px; padding: 4px 0; font: inherit; font-size: 13px; line-height: 1; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); cursor: pointer; }
+  .ovl-fbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ovl-adjhint { font-size: 10px; color: var(--ink-faint); line-height: 1.4; margin-top: 9px; }
+  .ovl-reset { width: 100%; margin-top: 8px; padding: 6px; font: inherit; font-size: 11px; font-weight: 600; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink-soft); cursor: pointer; }
+  .ovl-reset:hover { color: var(--danger); border-color: var(--danger); }
+  .overlay-stack img.ovl-active { outline: 2px dashed var(--accent); outline-offset: -2px; }
   .ovl-note { font-size: 10.5px; color: var(--ink-faint); line-height: 1.45; margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--border); }
   .furniture-layer {
     position: absolute;
@@ -1695,9 +1709,8 @@ function warnStorageFull() {
   b.querySelector('button').addEventListener('click', () => b.remove());
   document.body.appendChild(b);
 }
-async function save() {
-  try {
-    const data = {
+function buildSaveData() {
+  return {
       furniture: state.furniture,
       deletedItems: state.deletedItems,
       measurements: state.measurements,
@@ -1721,16 +1734,30 @@ async function save() {
       exportSelTs: state.exportSelTs,
       overlay: state.overlay,        // device-local view prefs (never synced)
       prevFloor: state.prevFloor,
-    };
-    const json = JSON.stringify(data);
-    if (window.storage && window.storage.set) {
-      try { await window.storage.set(STORAGE_KEY, json); } catch (e) { if (isQuotaError(e)) warnStorageFull(); else throw e; }
-    } else {
-      try { localStorage.setItem(STORAGE_KEY, json); } catch (e) { if (isQuotaError(e)) warnStorageFull(); else console.warn('local save failed', e); }
-    }
+  };
+}
+async function writeStore(json) {
+  if (window.storage && window.storage.set) {
+    try { await window.storage.set(STORAGE_KEY, json); } catch (e) { if (isQuotaError(e)) warnStorageFull(); else throw e; }
+  } else {
+    try { localStorage.setItem(STORAGE_KEY, json); } catch (e) { if (isQuotaError(e)) warnStorageFull(); else console.warn('local save failed', e); }
+  }
+}
+async function save() {
+  try {
+    await writeStore(JSON.stringify(buildSaveData()));
     scheduleAutoSync();
     pushHistory();
   } catch (e) { console.warn('Save failed:', e); }
+}
+// Overlay prefs are a device-local sandbox: persist them, but never push a sync
+// and never add an undo entry — nothing about the real plans has changed.
+let ovlSaveTimer = null;
+function saveOverlayLocal() {
+  if (ovlSaveTimer) clearTimeout(ovlSaveTimer);
+  ovlSaveTimer = setTimeout(async () => {
+    try { await writeStore(JSON.stringify(buildSaveData())); } catch (e) { console.warn('overlay save failed', e); }
+  }, 400);
 }
 
 // ============================================================
@@ -2302,15 +2329,31 @@ function overlayDefaults() {
   getAllFloors().forEach((f, i) => { out[f.id] = { on: i < 3, op: i === 0 ? 1 : 0.55 }; });
   return out;
 }
+const OVL_MAX_SHIFT = 500;   // keep a nudged plan from being dragged off the canvas
 function overlayGet(id) {
   const s = state.overlay && state.overlay[id];
-  if (s) return { on: !!s.on, op: s.op == null ? 0.55 : +s.op };
-  return overlayDefaults()[id] || { on: false, op: 0.55 };
+  const d = overlayDefaults()[id] || { on: false, op: 0.55 };
+  return {
+    on: s ? !!s.on : d.on,
+    op: s ? (s.op == null ? 0.55 : +s.op) : d.op,
+    dx: (s && +s.dx) || 0, dy: (s && +s.dy) || 0,
+    rot: (s && +s.rot) || 0,
+    sc: (s && s.sc != null) ? +s.sc : 1,
+    fh: !!(s && s.fh), fv: !!(s && s.fv),
+  };
 }
 function overlaySet(id, patch) {
   if (!state.overlay) state.overlay = {};
-  const cur = overlayGet(id);
-  state.overlay[id] = { on: patch.on != null ? !!patch.on : cur.on, op: patch.op != null ? +patch.op : cur.op };
+  const next = { ...overlayGet(id) };
+  for (const k in patch) if (patch[k] !== undefined) next[k] = patch[k];
+  next.dx = Math.max(-OVL_MAX_SHIFT, Math.min(OVL_MAX_SHIFT, next.dx));
+  next.dy = Math.max(-OVL_MAX_SHIFT, Math.min(OVL_MAX_SHIFT, next.dy));
+  state.overlay[id] = next;
+}
+function overlayAdjusted(a) { return !!(a.dx || a.dy || a.rot || a.sc !== 1 || a.fh || a.fv); }
+function overlayTransform(a) {
+  if (!overlayAdjusted(a)) return '';
+  return `translate(${a.dx}px, ${a.dy}px) rotate(${a.rot}deg) scale(${a.sc * (a.fh ? -1 : 1)}, ${a.sc * (a.fv ? -1 : 1)})`;
 }
 // Common frame: pick the coarsest px/ft (so nothing is upscaled at 100%), then
 // place every floor so real-world (0,0) lands on the same canvas point.
@@ -2327,12 +2370,21 @@ function overlayFrame() {
     top: originY - o.f.offsetY * o.s,
     w: o.f.w * o.s, h: o.f.h * o.s,
   }));
-  return {
-    items,
-    w: Math.ceil(Math.max(...items.map(i => i.left + i.w))),
-    h: Math.ceil(Math.max(...items.map(i => i.top + i.h))),
-    pxPerFt: ref, offsetX: originX, offsetY: originY,
-  };
+  // Canvas grows to fit manually moved/rotated/scaled plans. The ORIGIN stays
+  // fixed (it's derived from untransformed geometry only) so adjusting one floor
+  // never shifts the others under the cursor.
+  let W = Math.max(...items.map(i => i.left + i.w));
+  let H = Math.max(...items.map(i => i.top + i.h));
+  for (const i of items) {
+    const a = overlayGet(i.f.id);
+    if (!overlayAdjusted(a)) continue;
+    const r = a.rot * Math.PI / 180, s = Math.abs(a.sc);
+    const cx = i.left + i.w / 2 + a.dx, cy = i.top + i.h / 2 + a.dy;
+    const hw = i.w * s / 2, hh = i.h * s / 2;
+    W = Math.max(W, cx + Math.abs(Math.cos(r)) * hw + Math.abs(Math.sin(r)) * hh);
+    H = Math.max(H, cy + Math.abs(Math.sin(r)) * hw + Math.abs(Math.cos(r)) * hh);
+  }
+  return { items, w: Math.ceil(W), h: Math.ceil(H), pxPerFt: ref, offsetX: originX, offsetY: originY };
 }
 function renderOverlay(f) {
   const fr = overlayFrame();
@@ -2341,8 +2393,11 @@ function renderOverlay(f) {
   host.style.display = '';
   host.innerHTML = fr.items.map(i => {
     const src = (!state.labelsVisible && FLOORS_CLEAN[i.f.id]) || i.f.src;
-    return `<img src="${src}" alt="${winEscAttr(i.f.name)}" style="left:${i.left}px;top:${i.top}px;width:${i.w}px;height:${i.h}px;opacity:${overlayGet(i.f.id).op}">`;
+    const a = overlayGet(i.f.id), tf = overlayTransform(a);
+    const active = String(state.overlayEdit) === String(i.f.id);
+    return `<img class="${active ? 'ovl-active' : ''}" data-ovlimg="${i.f.id}" src="${src}" alt="${winEscAttr(i.f.name)}" style="left:${i.left}px;top:${i.top}px;width:${i.w}px;height:${i.h}px;opacity:${a.op};${tf ? `transform:${tf};` : ''}">`;
   }).join('');
+  els.canvas.style.cursor = state.overlayEdit ? 'move' : '';
   els.canvas.style.width = f.w + 'px';
   els.canvas.style.height = f.h + 'px';
   els.canvas.style.transform = `scale(${state.zoom})`;
@@ -2365,13 +2420,28 @@ function renderOverlayPanel() {
   box.style.display = '';
   const rows = getAllFloors().filter(f => f.src).map(f => {
     const c = overlayGet(f.id);
-    return `<div class="ovl-row ${c.on ? '' : 'off'}" data-ovl="${f.id}">
+    const editing = String(state.overlayEdit) === String(f.id);
+    const adj = overlayAdjusted(c);
+    return `<div class="ovl-row ${c.on ? '' : 'off'} ${editing ? 'editing' : ''}" data-ovl="${f.id}">
       <div class="ovl-top">
         <span class="ovl-sw ${c.on ? 'on' : ''}" data-ovltog="${f.id}" role="switch" aria-checked="${c.on}" tabindex="0" title="Show / hide"></span>
         <span class="ovl-nm">${winEscHtml(f.name)}</span>
         <span class="ovl-pct" data-ovlpct="${f.id}">${Math.round(c.op * 100)}%</span>
       </div>
       <input type="range" min="0" max="100" step="1" value="${Math.round(c.op * 100)}" data-ovlop="${f.id}" aria-label="${winEscAttr(f.name)} opacity">
+      ${c.on ? `<button class="ovl-adj ${editing ? 'on' : ''}" data-ovladj="${f.id}">✥ ${editing ? 'Done adjusting' : 'Adjust'}${adj && !editing ? ' •' : ''}</button>` : ''}
+      ${editing ? `<div class="ovl-adjbox">
+        <div class="ovl-arow"><span>Rotate</span><b data-ovlrotv="${f.id}">${c.rot.toFixed(1)}°</b></div>
+        <input type="range" min="-20" max="20" step="0.1" value="${c.rot}" data-ovlrot="${f.id}" aria-label="Rotate">
+        <div class="ovl-arow"><span>Size</span><b data-ovlscv="${f.id}">${Math.round(c.sc * 100)}%</b></div>
+        <input type="range" min="60" max="140" step="0.5" value="${c.sc * 100}" data-ovlsc="${f.id}" aria-label="Size">
+        <div class="ovl-arow"><span>Flip</span><span class="ovl-flips">
+          <button class="ovl-fbtn ${c.fh ? 'on' : ''}" data-ovlflip="h" data-fid="${f.id}" title="Mirror left ↔ right">↔</button>
+          <button class="ovl-fbtn ${c.fv ? 'on' : ''}" data-ovlflip="v" data-fid="${f.id}" title="Mirror top ↕ bottom">↕</button>
+        </span></div>
+        <div class="ovl-adjhint">Drag the plan to move · arrow keys nudge (⇧ = 10×)</div>
+        <button class="ovl-reset" data-ovlreset="${f.id}">↺ Reset this floor</button>
+      </div>` : ''}
     </div>`;
   }).join('');
   box.innerHTML = `<h4>⧉ Floor overlay</h4>
@@ -2380,7 +2450,7 @@ function renderOverlayPanel() {
     <div class="ovl-note">View only — pins and furniture are hidden here. Plans are matched by feet, so floors drawn at different scales still line up.</div>`;
   box.querySelectorAll('[data-ovltog]').forEach(el => {
     const id = el.getAttribute('data-ovltog');
-    const flip = () => { overlaySet(id, { on: !overlayGet(id).on }); renderFloor(); scheduleSave(); };
+    const flip = () => { overlaySet(id, { on: !overlayGet(id).on }); renderFloor(); saveOverlayLocal(); };
     el.addEventListener('click', flip);
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
   });
@@ -2390,20 +2460,94 @@ function renderOverlayPanel() {
       const op = (+el.value) / 100;
       overlaySet(id, { op });
       const pct = box.querySelector(`[data-ovlpct="${id}"]`); if (pct) pct.textContent = Math.round(op * 100) + '%';
-      // live-update just this image; no full rebuild so the drag stays smooth
-      const items = overlayFrame().items;
-      const idx = items.findIndex(i => String(i.f.id) === String(id));
-      const img = document.querySelectorAll('#overlay-stack img')[idx];
-      if (img) img.style.opacity = op;
-      scheduleSave();
+      const img = ovlImg(id); if (img) img.style.opacity = op;   // live, no rebuild → smooth drag
+      saveOverlayLocal();
     });
   });
+  // enter/leave adjust mode for one floor (only one at a time — the canvas drag
+  // has to know which plan it is moving)
+  box.querySelectorAll('[data-ovladj]').forEach(el => el.addEventListener('click', () => {
+    const id = el.getAttribute('data-ovladj');
+    state.overlayEdit = (String(state.overlayEdit) === String(id)) ? null : id;
+    renderFloor();
+  }));
+  box.querySelectorAll('[data-ovlrot]').forEach(el => {
+    const id = el.getAttribute('data-ovlrot');
+    el.addEventListener('input', () => {
+      overlaySet(id, { rot: +el.value });
+      const v = box.querySelector(`[data-ovlrotv="${id}"]`); if (v) v.textContent = (+el.value).toFixed(1) + '°';
+      ovlLiveTransform(id); saveOverlayLocal();
+    });
+    el.addEventListener('change', () => renderFloor());   // resize canvas once the drag ends
+  });
+  box.querySelectorAll('[data-ovlsc]').forEach(el => {
+    const id = el.getAttribute('data-ovlsc');
+    el.addEventListener('input', () => {
+      overlaySet(id, { sc: (+el.value) / 100 });
+      const v = box.querySelector(`[data-ovlscv="${id}"]`); if (v) v.textContent = Math.round(+el.value) + '%';
+      ovlLiveTransform(id); saveOverlayLocal();
+    });
+    el.addEventListener('change', () => renderFloor());
+  });
+  box.querySelectorAll('[data-ovlflip]').forEach(el => el.addEventListener('click', () => {
+    const id = el.getAttribute('data-fid'), axis = el.getAttribute('data-ovlflip');
+    const c = overlayGet(id);
+    overlaySet(id, axis === 'h' ? { fh: !c.fh } : { fv: !c.fv });
+    renderFloor(); saveOverlayLocal();
+  }));
+  box.querySelectorAll('[data-ovlreset]').forEach(el => el.addEventListener('click', () => {
+    const id = el.getAttribute('data-ovlreset');
+    overlaySet(id, { dx: 0, dy: 0, rot: 0, sc: 1, fh: false, fv: false });
+    renderFloor(); saveOverlayLocal();
+  }));
 }
+function ovlImg(id) { return document.querySelector(`#overlay-stack img[data-ovlimg="${id}"]`); }
+function ovlLiveTransform(id) { const img = ovlImg(id); if (img) img.style.transform = overlayTransform(overlayGet(id)); }
+
+// Drag a plan around in the overlay (only the floor currently being adjusted).
+let ovlDrag = null;
+function overlayDragStart(e) {
+  const id = state.overlayEdit;
+  if (!id || !overlayGet(id).on || !ovlImg(id)) return;
+  const a = overlayGet(id);
+  ovlDrag = { id, sx: e.clientX, sy: e.clientY, dx0: a.dx, dy0: a.dy };
+  e.preventDefault();
+  window.addEventListener('pointermove', overlayDragMove);
+  window.addEventListener('pointerup', overlayDragEnd);
+  window.addEventListener('pointercancel', overlayDragEnd);
+}
+function overlayDragMove(e) {
+  if (!ovlDrag) return;
+  const z = state.zoom || 1;
+  overlaySet(ovlDrag.id, { dx: Math.round(ovlDrag.dx0 + (e.clientX - ovlDrag.sx) / z), dy: Math.round(ovlDrag.dy0 + (e.clientY - ovlDrag.sy) / z) });
+  ovlLiveTransform(ovlDrag.id);   // style only — the frame is recomputed on release
+}
+function overlayDragEnd() {
+  if (!ovlDrag) return;
+  ovlDrag = null;
+  window.removeEventListener('pointermove', overlayDragMove);
+  window.removeEventListener('pointerup', overlayDragEnd);
+  window.removeEventListener('pointercancel', overlayDragEnd);
+  renderFloor(); saveOverlayLocal();
+}
+// Arrow-key nudge for the floor being adjusted (shift = 10px steps).
+document.addEventListener('keydown', (e) => {
+  if (!isOverlay() || !state.overlayEdit) return;
+  if (!/^Arrow(Left|Right|Up|Down)$/.test(e.key)) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) ) return;
+  const step = e.shiftKey ? 10 : 1, a = overlayGet(state.overlayEdit);
+  const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+  overlaySet(state.overlayEdit, { dx: a.dx + d[0], dy: a.dy + d[1] });
+  e.preventDefault();
+  renderFloor(); saveOverlayLocal();
+});
 
 function renderFloor() {
   const f = getFloor(state.currentFloor);
   if (isOverlay()) { renderOverlay(f); return; }
   els.floorImage.style.display = '';
+  els.canvas.style.cursor = '';
+  state.overlayEdit = null;
   const os = document.getElementById('overlay-stack');
   if (os) { os.style.display = 'none'; os.innerHTML = ''; }
   renderOverlayPanel();
@@ -2499,7 +2643,7 @@ function renderFloorTabs() {
     // the controls live in the sidebar — make sure it's actually open
     if (state.sidebarCollapsed) { state.sidebarCollapsed = false; applySidebarCollapsed(); }
     renderFloor();
-    scheduleSave();
+    saveOverlayLocal();
   });
   container.appendChild(ovl);
 
@@ -3030,7 +3174,9 @@ function axisLockTo(pt, from) {
 }
 
 els.canvas.addEventListener('pointerdown', (e) => {
-  if (isOverlay()) return;   // overlay is view-only — never write to the synthetic floor
+  // Overlay is a sandbox: the only thing a canvas drag can do is move the plan
+  // being adjusted. It never creates or edits anything on a real floor.
+  if (isOverlay()) { overlayDragStart(e); return; }
   // Window/switch pin placement + plain deselect happen as TAPS (pointerup with no
   // drag), handled by wireTouchCanvas() below — so panning/pinching never drops a pin.
   // In label mode, canvas clicks place a new room label.
