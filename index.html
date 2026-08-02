@@ -194,6 +194,27 @@
     user-select: none;
     -webkit-user-drag: none;
   }
+  /* stacked floor plans, aligned by real-world feet */
+  .overlay-stack { position: absolute; inset: 0; pointer-events: none; }
+  .overlay-stack img { position: absolute; display: block; user-select: none; -webkit-user-drag: none; mix-blend-mode: multiply; }
+  /* In the overlay tab the sidebar belongs to the overlay controls alone. */
+  body.floor-overlay #sidebar-content, body.floor-overlay .view-hint { display: none !important; }
+  .ovl-panel { padding: 12px 14px; }
+  .ovl-panel h4 { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+  .ovl-panel .ovl-sub { font-size: 11px; color: var(--ink-faint); line-height: 1.45; margin-bottom: 11px; }
+  .ovl-row { padding: 9px 0; border-top: 1px solid var(--border); }
+  .ovl-row:first-of-type { border-top: none; }
+  .ovl-top { display: flex; align-items: center; gap: 8px; }
+  .ovl-sw { position: relative; flex: 0 0 34px; width: 34px; height: 20px; border-radius: 20px; background: var(--border); cursor: pointer; transition: background .15s; }
+  .ovl-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s; }
+  .ovl-sw.on { background: var(--accent); }
+  .ovl-sw.on::after { transform: translateX(14px); }
+  .ovl-nm { flex: 1 1 auto; min-width: 0; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ovl-pct { flex: 0 0 auto; font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .ovl-row input[type=range] { width: 100%; margin-top: 7px; accent-color: var(--accent); cursor: pointer; }
+  .ovl-row.off { opacity: .45; }
+  .ovl-row.off input[type=range] { pointer-events: none; }
+  .ovl-note { font-size: 10.5px; color: var(--ink-faint); line-height: 1.45; margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--border); }
   .furniture-layer {
     position: absolute;
     top: 0;
@@ -1153,11 +1174,13 @@
     <div id="sidebar-content"></div>
     <div id="view-hint-windows" class="view-hint"><b>🪟 Windows view</b>Click the plan to drop a window pin, then enter its width, height &amp; depth on the right. Click a pin to edit, drag to move. Open 📋 Summary for the full list.</div>
     <div id="view-hint-switches" class="view-hint"><b>💡 Switches view</b>Click the plan to add a switch location, then build its gang on the right — add switches, set Dimmer/Normal, and pair 3-ways to another location.</div>
+    <div id="overlay-controls" class="ovl-panel" style="display:none;"></div>
   </aside>
 
   <div class="canvas-wrapper" id="canvas-wrapper">
     <div class="canvas-sizer" id="canvas-sizer">
       <div class="canvas" id="canvas">
+        <div class="overlay-stack" id="overlay-stack" style="display:none;"></div>
         <img class="floor-image" id="floor-image" alt="Floor">
         <div class="furniture-layer" id="furniture-layer"></div>
         <svg class="measure-layer" id="measure-layer" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -1445,6 +1468,12 @@ const FLOOR_META = {
 // Effective floor data: state.floors override > FLOORS default > FLOOR_META.
 function getFloor(id) {
   id = String(id);
+  // The overlay is a synthetic frame, not a stored floor — return a real-shaped
+  // floor object so every getFloor(state.currentFloor) call site keeps working.
+  if (id === OVERLAY_ID) {
+    const fr = overlayFrame();
+    return { id, name: 'Overlay', order: 9999, src: '', w: fr.w, h: fr.h, pxPerFt: fr.pxPerFt, offsetX: fr.offsetX, offsetY: fr.offsetY, _ts: 0, isDefault: false, isOverlay: true };
+  }
   const base = FLOORS[id];
   const meta = FLOOR_META[id];
   const ovr  = state.floors[id];
@@ -1585,6 +1614,10 @@ const state = {
   // with full data. Default floors fall back to FLOORS/FLOOR_META if missing.
   floors: {},
   deletedFloors: {},
+  // Floor-overlay view prefs: { [floorId]: { on, op } }. Device-local, saved but
+  // never synced — how you like the stack shaded is per-screen, not shared data.
+  overlay: null,
+  prevFloor: null,
   selectedId: null,
   selectedMeasurementId: null,
   measureMode: false,
@@ -1686,6 +1719,8 @@ async function save() {
       layerVis: state.layerVis,
       exportSel: state.exportSel,
       exportSelTs: state.exportSelTs,
+      overlay: state.overlay,        // device-local view prefs (never synced)
+      prevFloor: state.prevFloor,
     };
     const json = JSON.stringify(data);
     if (window.storage && window.storage.set) {
@@ -1804,6 +1839,8 @@ async function load() {
     if (data.layerVis) state.layerVis = { furniture: true, windows: true, switches: true, ...data.layerVis };
     if (Array.isArray(data.exportSel)) state.exportSel = data.exportSel.map(String);
     if (typeof data.exportSelTs === 'number') state.exportSelTs = data.exportSelTs;
+    if (data.overlay) state.overlay = data.overlay;
+    if (data.prevFloor) state.prevFloor = String(data.prevFloor);
     // Migration: stamp existing items lacking _ts so sync LWW treats them as
     // "ancient" (any timestamped change overrides them); ensure tombstone maps
     // exist for every floor.
@@ -2249,8 +2286,127 @@ const els = {
   statusCount: document.getElementById('status-count'),
 };
 
+// ============================================================
+// FLOOR OVERLAY
+// ============================================================
+// A read-only pseudo-floor that stacks every real floor's plan in one frame so
+// they can be compared. The floors have DIFFERENT scales (px/ft) and origins, so
+// each image is rescaled to a common px/ft and shifted to line its real-world
+// origin up with the others — stacking the raw images would be misaligned.
+// It never appears in getAllFloors(), state.floors, or the sync payload; the
+// per-floor on/off + opacity settings are device-local (saved, not synced).
+const OVERLAY_ID = '__overlay__';
+function isOverlay() { return String(state.currentFloor) === OVERLAY_ID; }
+function overlayDefaults() {
+  const out = {};
+  getAllFloors().forEach((f, i) => { out[f.id] = { on: i < 3, op: i === 0 ? 1 : 0.55 }; });
+  return out;
+}
+function overlayGet(id) {
+  const s = state.overlay && state.overlay[id];
+  if (s) return { on: !!s.on, op: s.op == null ? 0.55 : +s.op };
+  return overlayDefaults()[id] || { on: false, op: 0.55 };
+}
+function overlaySet(id, patch) {
+  if (!state.overlay) state.overlay = {};
+  const cur = overlayGet(id);
+  state.overlay[id] = { on: patch.on != null ? !!patch.on : cur.on, op: patch.op != null ? +patch.op : cur.op };
+}
+// Common frame: pick the coarsest px/ft (so nothing is upscaled at 100%), then
+// place every floor so real-world (0,0) lands on the same canvas point.
+function overlayFrame() {
+  const live = getAllFloors().filter(f => f.src && overlayGet(f.id).on);
+  if (!live.length) return { items: [], w: 900, h: 700, pxPerFt: 20, offsetX: 0, offsetY: 0 };
+  const ref = Math.min(...live.map(f => f.pxPerFt));
+  const sc = live.map(f => ({ f, s: ref / f.pxPerFt }));
+  const originX = Math.max(...sc.map(o => o.f.offsetX * o.s));
+  const originY = Math.max(...sc.map(o => o.f.offsetY * o.s));
+  const items = sc.map(o => ({
+    f: o.f, s: o.s,
+    left: originX - o.f.offsetX * o.s,
+    top: originY - o.f.offsetY * o.s,
+    w: o.f.w * o.s, h: o.f.h * o.s,
+  }));
+  return {
+    items,
+    w: Math.ceil(Math.max(...items.map(i => i.left + i.w))),
+    h: Math.ceil(Math.max(...items.map(i => i.top + i.h))),
+    pxPerFt: ref, offsetX: originX, offsetY: originY,
+  };
+}
+function renderOverlay(f) {
+  const fr = overlayFrame();
+  els.floorImage.style.display = 'none';
+  const host = document.getElementById('overlay-stack');
+  host.style.display = '';
+  host.innerHTML = fr.items.map(i => {
+    const src = (!state.labelsVisible && FLOORS_CLEAN[i.f.id]) || i.f.src;
+    return `<img src="${src}" alt="${winEscAttr(i.f.name)}" style="left:${i.left}px;top:${i.top}px;width:${i.w}px;height:${i.h}px;opacity:${overlayGet(i.f.id).op}">`;
+  }).join('');
+  els.canvas.style.width = f.w + 'px';
+  els.canvas.style.height = f.h + 'px';
+  els.canvas.style.transform = `scale(${state.zoom})`;
+  els.canvasSizer.style.width = (f.w * state.zoom) + 'px';
+  els.canvasSizer.style.height = (f.h * state.zoom) + 'px';
+  els.statusFloor.textContent = `Overlay — ${fr.items.length} floor${fr.items.length === 1 ? '' : 's'}`;
+  els.statusScale.textContent = fr.pxPerFt.toFixed(2);
+  els.zoomLevel.textContent = Math.round(state.zoom * 100) + '%';
+  // no per-floor annotations in the stacked view
+  ['furniture-layer', 'measure-layer', 'room-label-layer', 'window-layer', 'switch-link-layer', 'switch-layer']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  renderFloorTabs();
+  renderOverlayPanel();
+}
+function renderOverlayPanel() {
+  const box = document.getElementById('overlay-controls');
+  if (!box) return;
+  document.body.classList.toggle('floor-overlay', isOverlay());
+  if (!isOverlay()) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const rows = getAllFloors().filter(f => f.src).map(f => {
+    const c = overlayGet(f.id);
+    return `<div class="ovl-row ${c.on ? '' : 'off'}" data-ovl="${f.id}">
+      <div class="ovl-top">
+        <span class="ovl-sw ${c.on ? 'on' : ''}" data-ovltog="${f.id}" role="switch" aria-checked="${c.on}" tabindex="0" title="Show / hide"></span>
+        <span class="ovl-nm">${winEscHtml(f.name)}</span>
+        <span class="ovl-pct" data-ovlpct="${f.id}">${Math.round(c.op * 100)}%</span>
+      </div>
+      <input type="range" min="0" max="100" step="1" value="${Math.round(c.op * 100)}" data-ovlop="${f.id}" aria-label="${winEscAttr(f.name)} opacity">
+    </div>`;
+  }).join('');
+  box.innerHTML = `<h4>⧉ Floor overlay</h4>
+    <div class="ovl-sub">All floors stacked and aligned to real-world scale. Toggle each one on/off and slide from transparent to opaque.</div>
+    ${rows}
+    <div class="ovl-note">View only — pins and furniture are hidden here. Plans are matched by feet, so floors drawn at different scales still line up.</div>`;
+  box.querySelectorAll('[data-ovltog]').forEach(el => {
+    const id = el.getAttribute('data-ovltog');
+    const flip = () => { overlaySet(id, { on: !overlayGet(id).on }); renderFloor(); scheduleSave(); };
+    el.addEventListener('click', flip);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+  });
+  box.querySelectorAll('[data-ovlop]').forEach(el => {
+    const id = el.getAttribute('data-ovlop');
+    el.addEventListener('input', () => {
+      const op = (+el.value) / 100;
+      overlaySet(id, { op });
+      const pct = box.querySelector(`[data-ovlpct="${id}"]`); if (pct) pct.textContent = Math.round(op * 100) + '%';
+      // live-update just this image; no full rebuild so the drag stays smooth
+      const items = overlayFrame().items;
+      const idx = items.findIndex(i => String(i.f.id) === String(id));
+      const img = document.querySelectorAll('#overlay-stack img')[idx];
+      if (img) img.style.opacity = op;
+      scheduleSave();
+    });
+  });
+}
+
 function renderFloor() {
   const f = getFloor(state.currentFloor);
+  if (isOverlay()) { renderOverlay(f); return; }
+  els.floorImage.style.display = '';
+  const os = document.getElementById('overlay-stack');
+  if (os) { os.style.display = 'none'; os.innerHTML = ''; }
+  renderOverlayPanel();
   // If labels are hidden AND we have a cleaned-PNG variant for this floor,
   // use that instead of the original (paints over baked-in room labels).
   els.floorImage.src = (!state.labelsVisible && FLOORS_CLEAN[state.currentFloor]) || f.src;
@@ -2325,6 +2481,28 @@ function renderFloorTabs() {
     btn.addEventListener('dblclick', () => openFloorModal(f.id));
     container.appendChild(btn);
   }
+  // Overlay tab — stacks all the plans in one aligned frame (view only).
+  const ovl = document.createElement('button');
+  ovl.textContent = '⧉ Overlay';
+  ovl.title = 'Stack every floor plan, aligned to scale';
+  if (isOverlay()) ovl.classList.add('active');
+  ovl.addEventListener('click', () => {
+    if (isOverlay()) return;
+    // leave any placement mode — the overlay is not a real floor to draw on
+    if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); }
+    if (state.labelMode) { state.labelMode = false; window.__applyLabelMode && window.__applyLabelMode(); }
+    if (state.windowMode) { state.windowMode = false; window.__applyWindowMode && window.__applyWindowMode(); }
+    if (state.switchMode) { state.switchMode = false; window.__applySwitchMode && window.__applySwitchMode(); }
+    state.prevFloor = state.currentFloor;
+    state.currentFloor = OVERLAY_ID;
+    state.selectedId = null; state.selectedMeasurementId = null; state.selectedWindowId = null; state.selectedSwitchId = null; state.selectedRoomLabelId = null;
+    // the controls live in the sidebar — make sure it's actually open
+    if (state.sidebarCollapsed) { state.sidebarCollapsed = false; applySidebarCollapsed(); }
+    renderFloor();
+    scheduleSave();
+  });
+  container.appendChild(ovl);
+
   const addBtn = document.createElement('button');
   addBtn.textContent = '+';
   addBtn.title = 'Add floor';
@@ -2852,6 +3030,7 @@ function axisLockTo(pt, from) {
 }
 
 els.canvas.addEventListener('pointerdown', (e) => {
+  if (isOverlay()) return;   // overlay is view-only — never write to the synthetic floor
   // Window/switch pin placement + plain deselect happen as TAPS (pointerup with no
   // drag), handled by wireTouchCanvas() below — so panning/pinching never drops a pin.
   // In label mode, canvas clicks place a new room label.
@@ -2997,7 +3176,7 @@ let pinchStart = null;
       return;
     }
     // A tap candidate for placement/deselect — not on a draggable element, not while measuring/labelling.
-    if (state.measureMode || state.labelMode || state.selectMode) { tap = null; return; }
+    if (state.measureMode || state.labelMode || state.selectMode || isOverlay()) { tap = null; return; }
     if (e.target.closest('.furniture, .win-pin, .sw-pin, .room-label, .m-handle')) { tap = null; return; }
     tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false };
   });
@@ -4764,9 +4943,10 @@ function applyView(v, skipSave) {
   // Relabel the Clear button so it's obvious it only clears the active layer.
   const clearLabel = document.getElementById('clear-label');
   if (clearLabel) clearLabel.textContent = 'Clear ' + (v === 'windows' ? 'windows' : v === 'switches' ? 'switches' : 'furniture');
-  // The view drives placement mode for its layer.
-  state.windowMode = (v === 'windows');
-  state.switchMode = (v === 'switches');
+  // The view drives placement mode for its layer — except on the overlay, which
+  // is view-only, so switching view tabs there must not arm a placement cursor.
+  state.windowMode = (v === 'windows') && !isOverlay();
+  state.switchMode = (v === 'switches') && !isOverlay();
   // Leaving Furniture view also drops the furniture-only Measure/Label tools.
   if (v !== 'furniture') {
     if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); }
@@ -5491,6 +5671,8 @@ document.getElementById('sync-clear').addEventListener('click', () => {
   renderSidebar();
   // On phones, start with both side panels collapsed so the plan gets full width.
   if (window.matchMedia('(max-width: 768px)').matches) { state.sidebarCollapsed = true; state.panelMinimized = true; }
+  // Reopening straight onto the overlay tab: its controls live in the sidebar.
+  else if (isOverlay() && state.sidebarCollapsed) state.sidebarCollapsed = false;
   applySidebarCollapsed();
   applyPropsCollapsed();
   applyLabelsVisible();
