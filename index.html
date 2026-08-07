@@ -259,6 +259,19 @@
   .pb-add { margin-top: 4px; padding: 8px; font: inherit; font-size: 12px; font-weight: 700; border: 1.5px dashed #6b7280; border-radius: 7px; background: transparent; color: #cbd5e1; cursor: pointer; }
   .pb-add:hover { border-color: #e5e7eb; color: #fff; }
   .pb-empty { grid-column: 1 / -1; color: #cbd5e1; font-size: 12.5px; text-align: center; padding: 26px 20px 12px; line-height: 1.6; }
+  /* Read-only lock: browse everything, edit nothing. */
+  #readonly-btn.on { background: #b45309 !important; border-color: #b45309 !important; color: #fff !important; }
+  body.read-only #properties-content :is(input, select, textarea, button) { pointer-events: none; opacity: .55; }
+  body.read-only #properties-content .wi-ph-rm { display: none; }              /* photos: view yes, remove no */
+  body.read-only #sidebar-content { opacity: .55; }                            /* adds are guarded in addItem */
+  body.read-only #clear-floor, body.read-only #undo-btn, body.read-only #measure-toggle,
+  body.read-only #room-label-add-btn, body.read-only #window-add-btn, body.read-only #switch-add-btn,
+  body.read-only #select-mode-btn, body.read-only #mobile-add-fab,
+  body.read-only .pb-add, body.read-only .pb-rm,
+  body.read-only .ovl-adj, body.read-only .ovl-adjbox { display: none !important; }
+  body.read-only .pb-p2 { pointer-events: none; }
+  body.read-only .pb-p2:not(.on) { visibility: hidden; }                       /* keep showing real 2P marks */
+  body.read-only .sum-pick { pointer-events: none; opacity: .5; }
   .ovl-note { font-size: 10.5px; color: var(--ink-faint); line-height: 1.45; margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--border); }
   .furniture-layer {
     position: absolute;
@@ -1049,9 +1062,9 @@
     .header-spacer { display: none; }
     #add-custom-btn, .controls label.toggle, #measure-toggle, #room-label-add-btn,
     #zoom-out, #zoom-in, #zoom-level, #sync-btn-status { display: none; }
-    /* Select is icon-only on phones to save room; Summary & Sync keep their labels. */
-    #select-mode-btn .ra-ic { display: inline-flex !important; }
-    #select-mode-btn > span:not(.ra-ic) { display: none; }
+    /* Select & Lock are icon-only on phones to save room; Summary & Sync keep their labels. */
+    #select-mode-btn .ra-ic, #readonly-btn .ra-ic { display: inline-flex !important; }
+    #select-mode-btn > span:not(.ra-ic), #readonly-btn > span:not(.ra-ic) { display: none; }
     header { position: relative; }
     /* Floor tabs collapse to a compact dropdown on phones. */
     #floor-tabs { display: none; }
@@ -1196,6 +1209,7 @@
 
   <div class="header-spacer"></div>
   <div class="right-actions">
+    <button id="readonly-btn" title="Lock editing so you can browse without accidental changes" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">🔓</span><span class="ra-lb">Lock</span></button>
     <button id="select-mode-btn" title="Select switches for export (locks editing)" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">✓</span><span>Select</span></button>
     <button id="summary-open-btn" title="Window &amp; switch schedule" style="background:transparent;border:1px solid var(--border);color:var(--ink);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="ra-ic">📋</span><span class="ra-lb-full">Summary</span><span class="ra-lb-short">List</span></button>
     <button id="sync-open-btn" title="Cloud sync" style="background:transparent;border:1px solid var(--border);color:var(--ink-soft);padding:7px 13px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;">
@@ -1681,6 +1695,9 @@ const state = {
   // synced with per-breaker LWW + tombstones, same lifecycle as switches.
   breakers: [],
   deletedBreakers: {},
+  // Read-only lock: blocks every edit path so you can browse (esp. on a phone)
+  // without accidental changes. Device-local — locking the phone doesn't lock the Mac.
+  readOnly: false,
   // Floor-overlay view prefs: { [floorId]: { on, op } }. Device-local, saved but
   // never synced — how you like the stack shaded is per-screen, not shared data.
   overlay: null,
@@ -1721,7 +1738,7 @@ const state = {
 function genId() { return Math.floor(Math.random() * 9e15); }
 // Stamp a "last modified" timestamp. Called on every mutation that needs to
 // propagate via sync (LWW resolves conflicts by max _ts).
-function touch(it) { if (it) it._ts = Date.now(); }
+function touch(it) { if (state.readOnly) return; if (it) it._ts = Date.now(); }
 // Tombstone an item id for the current floor.
 function tombstone(floor, id) {
   if (!state.deletedItems[floor]) state.deletedItems[floor] = {};
@@ -1793,6 +1810,7 @@ function buildSaveData() {
       exportSelTs: state.exportSelTs,
       overlay: state.overlay,        // device-local view prefs (never synced)
       prevFloor: state.prevFloor,
+      readOnly: state.readOnly,      // device-local lock (never synced)
   };
 }
 async function writeStore(json) {
@@ -1933,6 +1951,7 @@ async function load() {
     if (typeof data.exportSelTs === 'number') state.exportSelTs = data.exportSelTs;
     if (data.overlay) state.overlay = data.overlay;
     if (data.prevFloor) state.prevFloor = String(data.prevFloor);
+    if (data.readOnly) state.readOnly = true;
     // Migration: stamp existing items lacking _ts so sync LWW treats them as
     // "ancient" (any timestamped change overrides them); ensure tombstone maps
     // exist for every floor.
@@ -2604,6 +2623,7 @@ function ovlLiveTransform(id) { const img = ovlImg(id); if (img) img.style.trans
 // Drag a plan around in the overlay (only the floor currently being adjusted).
 let ovlDrag = null;
 function overlayDragStart(e) {
+  if (state.readOnly) return;
   const id = state.overlayEdit;
   if (!id || !overlayGet(id).on || !ovlImg(id)) return;
   const a = overlayGet(id);
@@ -2629,7 +2649,7 @@ function overlayDragEnd() {
 }
 // Arrow-key nudge for the floor being adjusted (shift = 10px steps).
 document.addEventListener('keydown', (e) => {
-  if (!isOverlay() || !state.overlayEdit) return;
+  if (!isOverlay() || !state.overlayEdit || state.readOnly) return;
   if (!/^Arrow(Left|Right|Up|Down)$/.test(e.key)) return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) ) return;
   const step = e.shiftKey ? 10 : 1, a = overlayGet(state.overlayEdit);
@@ -2680,12 +2700,12 @@ function panelSlotHtml(b, assigned) {
   const chips = (assigned || []).map(a =>
     `<span class="pb-chip" data-locfloor="${a.floorId}" data-locgang="${a.gangId}" title="Show on plan">${winEscHtml(a.floorName + '·' + a.ref + (a.control ? ' ' + a.control : ''))}</span>`).join('');
   return `<div class="pb-slot ${b.poles === 2 ? 'p2' : ''}" data-bk="${b.id}">
-    <input class="pb-in pb-num" data-bf="num" data-id="${b.id}" value="${b.num ?? ''}" inputmode="numeric" title="Breaker number">
+    <input class="pb-in pb-num" data-bf="num" data-id="${b.id}" value="${b.num ?? ''}" inputmode="numeric" title="Breaker number" ${state.readOnly ? 'readonly' : ''}>
     <div class="pb-mid">
-      <input class="pb-in pb-label" data-bf="label" data-id="${b.id}" value="${winEscAttr(b.label || '')}" placeholder="what it feeds">
+      <input class="pb-in pb-label" data-bf="label" data-id="${b.id}" value="${winEscAttr(b.label || '')}" placeholder="${state.readOnly ? '' : 'what it feeds'}" ${state.readOnly ? 'readonly' : ''}>
       ${chips ? `<div class="pb-assigned">${chips}</div>` : ''}
     </div>
-    <span class="pb-ampswrap"><input class="pb-in pb-amps" data-bf="amps" data-id="${b.id}" value="${b.amps ?? ''}" inputmode="numeric" placeholder="—">A</span>
+    <span class="pb-ampswrap"><input class="pb-in pb-amps" data-bf="amps" data-id="${b.id}" value="${b.amps ?? ''}" inputmode="numeric" placeholder="${state.readOnly ? '' : '—'}" ${state.readOnly ? 'readonly' : ''}>A</span>
     <button class="pb-p2 ${b.poles === 2 ? 'on' : ''}" data-poles="${b.id}" title="Double-pole (240V)">2P</button>
     <button class="pb-rm" data-bkrm="${b.id}" title="Remove breaker">✕</button>
   </div>`;
@@ -2723,6 +2743,13 @@ function renderPanelBoard(f) {
   wirePanelBoard(host);
 }
 function wirePanelBoard(host) {
+  // Read-only: fields carry the readonly attr and the add/remove/2P controls are
+  // hidden by CSS — only wire the locate chips, skip every edit listener.
+  if (state.readOnly) {
+    host.querySelectorAll('.pb-chip').forEach(el => el.addEventListener('click', () =>
+      summaryLocate('switch', el.getAttribute('data-locfloor'), el.getAttribute('data-locgang'))));
+    return;
+  }
   // text/number fields — update in place while typing, rebuild only when a
   // number CHANGES (its column/position may move)
   host.querySelectorAll('[data-bf]').forEach(el => {
@@ -3225,6 +3252,7 @@ function renderSidebar() {
 // ITEM OPERATIONS
 // ============================================================
 function addItem(preset) {
+  if (state.readOnly) return;
   const items = currentItems();
   const cascade = (items.length % 8) * 0.5;
   const item = {
@@ -3319,6 +3347,7 @@ els.furnitureLayer.addEventListener('pointerdown', (e) => {
   if (!it) return;
   state.selectedId = id;
   renderFurniture();
+  if (state.readOnly) return;   // read-only: selecting to view is fine, dragging isn't
 
   const handleType = e.target.dataset.handle;
   const rect = els.canvas.getBoundingClientRect();
@@ -3401,6 +3430,7 @@ els.furnitureLayer.addEventListener('pointercancel', () => {
 });
 
 els.furnitureLayer.addEventListener('dblclick', (e) => {
+  if (state.readOnly) return;
   const target = e.target.closest('.furniture');
   if (!target) return;
   const id = +target.dataset.id;
@@ -3425,7 +3455,7 @@ function axisLockTo(pt, from) {
 els.canvas.addEventListener('pointerdown', (e) => {
   // Panel tab: the board's own inputs/buttons handle everything — the canvas
   // must not treat presses as placement or deselect.
-  if (isPanel()) return;
+  if (isPanel() || state.readOnly) return;
   // Overlay is a sandbox: the only thing a canvas drag can do is move the plan
   // being adjusted. It never creates or edits anything on a real floor.
   if (isOverlay()) { overlayDragStart(e); return; }
@@ -3574,7 +3604,7 @@ let pinchStart = null;
       return;
     }
     // A tap candidate for placement/deselect — not on a draggable element, not while measuring/labelling.
-    if (state.measureMode || state.labelMode || state.selectMode || isSynthFloor()) { tap = null; return; }
+    if (state.measureMode || state.labelMode || state.selectMode || isSynthFloor() || state.readOnly) { tap = null; return; }
     if (e.target.closest('.furniture, .win-pin, .sw-pin, .room-label, .m-handle')) { tap = null; return; }
     tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false };
   });
@@ -3642,6 +3672,7 @@ let mDrag = null;
 (function wireMeasureLayer() {
   const svg = document.getElementById('measure-layer');
   svg.addEventListener('pointerdown', (e) => {
+    if (state.readOnly) return;
     if (state.measureMode) return;
     const group = e.target.closest('.measurement');
     if (!group) return;
@@ -3755,6 +3786,7 @@ let rlDrag = null;
     const id = +el.dataset.id;
     const l = findRoomLabel(id);
     if (!l) return;
+    if (state.readOnly) { state.selectedRoomLabelId = id; renderRoomLabels(); return; }
     state.selectedRoomLabelId = id;
     state.selectedId = null;
     state.selectedMeasurementId = null;
@@ -3785,6 +3817,7 @@ let rlDrag = null;
     const id = +el.dataset.id;
     const l = findRoomLabel(id);
     if (!l) return;
+    if (state.readOnly) return;
     const next = prompt('Label text:', l.text);
     if (next !== null && next.trim()) {
       l.text = next.trim();
@@ -3938,6 +3971,7 @@ function loadFolderFiles(fileList, container) {
 }
 function refreshPhotoFolderUI(container) { const w = state.selectedWindowId ? findWindow(state.selectedWindowId) : null; if (w && container) renderWindowInspector(container, true); }
 async function addPhotoFiles(w, files, container) {
+  if (state.readOnly) return;
   // ask the browser not to evict on-device photos (helps iOS keep them past ~7 days)
   try { if (navigator.storage && navigator.storage.persist && !window.__persistAsked) { window.__persistAsked = true; navigator.storage.persist(); } } catch (_) {}
   for (const file of files) {
@@ -4420,6 +4454,7 @@ let winDrag = null;
     const w = findWindow(+el.dataset.id);
     if (!w) return;
     selectWindow(w.id);
+    if (state.readOnly) { e.stopPropagation(); e.preventDefault(); return; }
     const rect = els.canvas.getBoundingClientRect();
     const ft = getMouseFt(e, rect);
     winDrag = { id: w.id, dx: w.x - ft.x, dy: w.y - ft.y, sx: e.clientX, sy: e.clientY, moved: false };
@@ -4481,7 +4516,7 @@ function switchFlags(sw) { const o = []; if (sw && sw.smart) o.push('Smart'); if
 // outlets stay OFF unless you pick them yourself.
 function exportSelSet() { return new Set((state.exportSel || []).map(String)); }
 function isSwSelected(id) { return exportSelSet().has(String(id)); }
-function commitExportSel(arr) { state.exportSel = arr; state.exportSelTs = Date.now(); }
+function commitExportSel(arr) { if (state.readOnly) return; state.exportSel = arr; state.exportSelTs = Date.now(); }
 function setSwSelected(id, on) {
   const set = exportSelSet();
   if (on) set.add(String(id)); else set.delete(String(id));
@@ -5102,6 +5137,7 @@ let swDrag = null;
       return;
     }
     selectSwitch(s.id);
+    if (state.readOnly) { e.stopPropagation(); e.preventDefault(); return; }
     const rect = els.canvas.getBoundingClientRect();
     const ft = getMouseFt(e, rect);
     swDrag = { id: s.id, dx: s.x - ft.x, dy: s.y - ft.y, sx: e.clientX, sy: e.clientY, moved: false };
@@ -5365,8 +5401,8 @@ function applyView(v, skipSave) {
   if (clearLabel) clearLabel.textContent = 'Clear ' + (v === 'windows' ? 'windows' : v === 'switches' ? 'switches' : 'furniture');
   // The view drives placement mode for its layer — except on the overlay/panel
   // pseudo-floors, where switching view tabs must not arm a placement cursor.
-  state.windowMode = (v === 'windows') && !isSynthFloor();
-  state.switchMode = (v === 'switches') && !isSynthFloor();
+  state.windowMode = (v === 'windows') && !isSynthFloor() && !state.readOnly;
+  state.switchMode = (v === 'switches') && !isSynthFloor() && !state.readOnly;
   // Leaving Furniture view also drops the furniture-only Measure/Label tools.
   if (v !== 'furniture') {
     if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); }
@@ -5593,6 +5629,7 @@ document.getElementById('prop-delete-btn').addEventListener('click', () => state
 // KEYBOARD
 // ============================================================
 window.addEventListener('keydown', (e) => {
+  if (state.readOnly && e.key !== 'Escape') return;   // read-only: only Esc (deselect) passes
   // Cmd+Z / Ctrl+Z = undo (allowed even when an input is focused).
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
     e.preventDefault();
@@ -5739,6 +5776,38 @@ function applyLabelsVisible() {
   // Re-render floor so the cleaned-PNG variant kicks in for built-in floors.
   if (typeof renderFloor === 'function') renderFloor();
 }
+
+// Read-only lock: one switch that makes the whole app browse-safe. The guards
+// live at every edit chokepoint (placement, drags, keyboard, inspectors, panel,
+// photos, floor modal, export selection) + touch() as a sync backstop — this
+// function just flips the flag, the body class, and the armed modes.
+function applyReadOnly(skipRearm) {
+  document.body.classList.toggle('read-only', !!state.readOnly);
+  const b = document.getElementById('readonly-btn');
+  if (b) {
+    b.classList.toggle('on', !!state.readOnly);
+    b.querySelector('.ra-ic').textContent = state.readOnly ? '🔒' : '🔓';
+    const lb = b.querySelector('.ra-lb');
+    if (lb) lb.textContent = state.readOnly ? 'Locked' : 'Lock';
+    b.title = state.readOnly ? 'Read-only is ON — nothing can be changed. Tap to unlock.' : 'Lock editing so you can browse without accidental changes';
+  }
+  if (state.readOnly) {
+    if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); renderMeasurements(); }
+    if (state.labelMode) { state.labelMode = false; window.__applyLabelMode && window.__applyLabelMode(); }
+    state.windowMode = false; state.switchMode = false;
+    window.__applyWindowMode && window.__applyWindowMode();
+    window.__applySwitchMode && window.__applySwitchMode();
+    state.overlayEdit = null;
+    if (!skipRearm) renderFloor();
+  } else if (!skipRearm) {
+    applyView(state.view, true);   // re-arm placement mode for the current view
+  }
+}
+document.getElementById('readonly-btn').addEventListener('click', () => {
+  state.readOnly = !state.readOnly;
+  applyReadOnly();
+  scheduleSave();
+});
 document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('labels-toggle').addEventListener('change', (e) => {
   state.labelsVisible = e.target.checked;
@@ -5749,6 +5818,7 @@ document.getElementById('labels-toggle').addEventListener('change', (e) => {
 // Clear applies to the ACTIVE view's layer on the CURRENT floor only.
 // Each item is tombstoned so the deletion syncs to other devices.
 document.getElementById('clear-floor').addEventListener('click', () => {
+  if (state.readOnly) return;
   const floor = state.currentFloor;
   const fname = getFloor(floor).name || ('floor ' + floor);
   const now = Date.now();
@@ -5818,6 +5888,7 @@ let floorEditImg = null; // staged image data while in modal: {src, w, h}
 const floorModalBg = document.getElementById('floor-modal-bg');
 
 function openFloorModal(id) {
+  if (state.readOnly) return;
   floorEditId = id;
   const f = id ? getFloor(id) : null;
   const title = document.getElementById('floor-modal-title');
@@ -6097,6 +6168,7 @@ document.getElementById('sync-clear').addEventListener('click', () => {
   applyPropsCollapsed();
   applyLabelsVisible();
   applyLayerVis();
+  applyReadOnly(true);   // set the lock UI/body class; applyView below reads the flag when arming modes
   applyView(state.view, true);
   setTimeout(() => {
     if (state.zoom === 1.0) {
