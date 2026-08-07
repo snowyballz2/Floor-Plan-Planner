@@ -197,8 +197,11 @@
   /* stacked floor plans, aligned by real-world feet */
   .overlay-stack { position: absolute; inset: 0; pointer-events: none; }
   .overlay-stack img { position: absolute; display: block; user-select: none; -webkit-user-drag: none; mix-blend-mode: multiply; }
-  /* In the overlay tab the sidebar belongs to the overlay controls alone. */
-  body.floor-overlay #sidebar-content, body.floor-overlay .view-hint { display: none !important; }
+  /* In the overlay/panel tabs the sidebar belongs to that tab's controls alone. */
+  body.floor-overlay #sidebar-content, body.floor-overlay .view-hint,
+  body.floor-panel #sidebar-content, body.floor-panel .view-hint { display: none !important; }
+  #panel-help { display: none; }
+  body.floor-panel #panel-help { display: block; }
   .ovl-panel { padding: 12px 14px; }
   .ovl-panel h4 { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
   .ovl-panel .ovl-sub { font-size: 11px; color: var(--ink-faint); line-height: 1.45; margin-bottom: 11px; }
@@ -228,6 +231,34 @@
   .ovl-reset { width: 100%; margin-top: 8px; padding: 6px; font: inherit; font-size: 11px; font-weight: 600; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink-soft); cursor: pointer; }
   .ovl-reset:hover { color: var(--danger); border-color: var(--danger); }
   .overlay-stack img.ovl-active { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  /* electrical panel board */
+  .panel-board { position: absolute; inset: 0; padding: 26px 30px; }
+  .pb-box { background: #3d4451; border-radius: 14px; padding: 18px 18px 22px; box-shadow: inset 0 2px 10px rgba(0,0,0,.5), 0 4px 18px rgba(0,0,0,.25); height: 100%; display: flex; flex-direction: column; }
+  .pb-title { color: #e5e7eb; font-size: 15px; font-weight: 800; letter-spacing: .12em; text-align: center; text-transform: uppercase; }
+  .pb-sub { color: #9ca3af; font-size: 11px; text-align: center; margin: 3px 0 14px; }
+  .pb-cols { flex: 1; display: grid; grid-template-columns: 1fr 14px 1fr; gap: 0 8px; align-content: start; }
+  .pb-spine { background: #262b33; border-radius: 6px; }
+  .pb-col { display: flex; flex-direction: column; gap: 6px; }
+  .pb-slot { display: flex; align-items: flex-start; gap: 6px; background: #f5f6f8; border: 1px solid #262b33; border-radius: 7px; padding: 7px 8px; }
+  .pb-slot.p2 { box-shadow: inset 0 0 0 2px #b45309; }
+  .pb-num { flex: 0 0 30px; width: 30px; text-align: center; font-weight: 800; font-size: 13px; }
+  .pb-mid { flex: 1 1 auto; min-width: 0; }
+  .pb-in { font: inherit; font-size: 12px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #111827; padding: 3px 4px; }
+  .pb-in:hover { border-color: #d1d5db; background: #fff; }
+  .pb-in:focus { border-color: #2563eb; background: #fff; outline: none; }
+  .pb-label { width: 100%; }
+  .pb-ampswrap { flex: 0 0 auto; display: flex; align-items: center; color: #6b7280; font-size: 11px; font-weight: 700; }
+  .pb-amps { width: 34px; text-align: right; }
+  .pb-p2 { flex: 0 0 auto; font: inherit; font-size: 10px; font-weight: 800; padding: 3px 5px; border: 1px solid #d1d5db; border-radius: 5px; background: #fff; color: #9ca3af; cursor: pointer; }
+  .pb-p2.on { background: #b45309; border-color: #b45309; color: #fff; }
+  .pb-rm { flex: 0 0 auto; border: none; background: transparent; color: #9ca3af; cursor: pointer; font-size: 12px; padding: 2px 3px; }
+  .pb-rm:hover { color: #dc2626; }
+  .pb-assigned { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .pb-chip { font-size: 10px; font-weight: 600; background: #e0ecff; color: #1d4ed8; border-radius: 20px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+  .pb-chip:hover { background: #1d4ed8; color: #fff; }
+  .pb-add { margin-top: 4px; padding: 8px; font: inherit; font-size: 12px; font-weight: 700; border: 1.5px dashed #6b7280; border-radius: 7px; background: transparent; color: #cbd5e1; cursor: pointer; }
+  .pb-add:hover { border-color: #e5e7eb; color: #fff; }
+  .pb-empty { grid-column: 1 / -1; color: #cbd5e1; font-size: 12.5px; text-align: center; padding: 26px 20px 12px; line-height: 1.6; }
   .ovl-note { font-size: 10.5px; color: var(--ink-faint); line-height: 1.45; margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--border); }
   .furniture-layer {
     position: absolute;
@@ -482,6 +513,8 @@
   .si-drag { flex: 0 0 auto; cursor: grab; touch-action: none; color: var(--ink-faint); font-size: 15px; line-height: 1; padding: 2px 3px; user-select: none; -webkit-user-select: none; }
   .si-drag:active { cursor: grabbing; }
   .si-row.si-dragging { opacity: 0.96; box-shadow: 0 8px 22px rgba(0,0,0,0.28); position: relative; z-index: 6; background: var(--paper); }
+  .si-breaker { width: 100%; margin-top: 7px; font: inherit; font-size: 11.5px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--paper); color: var(--ink); }
+  .si-breaker:disabled { color: var(--ink-faint); }
   body.si-reordering, body.si-reordering * { user-select: none !important; -webkit-user-select: none !important; }
   .si-pairsel { width: 100%; font: inherit; font-size: 12px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--paper); color: var(--ink); margin-top: 6px; }
   .si-circuit { margin-top: 6px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--cc, #6d28d9); }
@@ -1189,12 +1222,22 @@
     <div id="view-hint-windows" class="view-hint"><b>🪟 Windows view</b>Click the plan to drop a window pin, then enter its width, height &amp; depth on the right. Click a pin to edit, drag to move. Open 📋 Summary for the full list.</div>
     <div id="view-hint-switches" class="view-hint"><b>💡 Switches view</b>Click the plan to add a switch location, then build its gang on the right — add switches, set Dimmer/Normal, and pair 3-ways to another location.</div>
     <div id="overlay-controls" class="ovl-panel" style="display:none;"></div>
+    <div id="panel-help" class="ovl-panel">
+      <h4>⚡ Electrical panel</h4>
+      <div class="ovl-sub">The house's breaker list — shared data, synced like switches.</div>
+      <div class="ovl-note" style="border-top:none;padding-top:0;margin-top:0;">
+        Click any field on a breaker to edit its number, amps, and what it feeds. <b>2P</b> marks a double-pole (240V) breaker.<br><br>
+        Assign switches from the 💡 Switches view — each switch has a “⚡ breaker” dropdown; assignments show here under the breaker.<br><br>
+        Snap a photo of the real panel door card and copy it in, row by row.
+      </div>
+    </div>
   </aside>
 
   <div class="canvas-wrapper" id="canvas-wrapper">
     <div class="canvas-sizer" id="canvas-sizer">
       <div class="canvas" id="canvas">
         <div class="overlay-stack" id="overlay-stack" style="display:none;"></div>
+        <div class="panel-board" id="panel-board" style="display:none;"></div>
         <img class="floor-image" id="floor-image" alt="Floor">
         <div class="furniture-layer" id="furniture-layer"></div>
         <svg class="measure-layer" id="measure-layer" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -1488,6 +1531,12 @@ function getFloor(id) {
     const fr = overlayFrame();
     return { id, name: 'Overlay', order: 9999, src: '', w: fr.w, h: fr.h, pxPerFt: fr.pxPerFt, offsetX: fr.offsetX, offsetY: fr.offsetY, _ts: 0, isDefault: false, isOverlay: true };
   }
+  if (id === PANEL_ID) {
+    // Board height follows the taller breaker column so nothing clips.
+    const c = panelCols();
+    const rows = Math.max(c.left.length, c.right.length, 5);
+    return { id, name: 'Panel', order: 9998, src: '', w: 860, h: 170 + rows * 58 + 60, pxPerFt: 20, offsetX: 0, offsetY: 0, _ts: 0, isDefault: false, isPanel: true };
+  }
   const base = FLOORS[id];
   const meta = FLOOR_META[id];
   const ovr  = state.floors[id];
@@ -1628,6 +1677,10 @@ const state = {
   // with full data. Default floors fall back to FLOORS/FLOOR_META if missing.
   floors: {},
   deletedFloors: {},
+  // Electrical panel: house-wide breaker list (not per-floor). Real shared data —
+  // synced with per-breaker LWW + tombstones, same lifecycle as switches.
+  breakers: [],
+  deletedBreakers: {},
   // Floor-overlay view prefs: { [floorId]: { on, op } }. Device-local, saved but
   // never synced — how you like the stack shaded is per-screen, not shared data.
   overlay: null,
@@ -1690,6 +1743,10 @@ function tombstoneSwitch(floor, id) {
   if (!state.deletedSwitches[floor]) state.deletedSwitches[floor] = {};
   state.deletedSwitches[floor][id] = Date.now();
 }
+function tombstoneBreaker(id) {
+  if (!state.deletedBreakers) state.deletedBreakers = {};
+  state.deletedBreakers[id] = Date.now();
+}
 
 // ============================================================
 // STORAGE
@@ -1723,6 +1780,8 @@ function buildSaveData() {
       deletedSwitches: state.deletedSwitches,
       floors: state.floors,
       deletedFloors: state.deletedFloors,
+      breakers: state.breakers,
+      deletedBreakers: state.deletedBreakers,
       currentFloor: state.currentFloor,
       zoom: state.zoom,
       sidebarCollapsed: state.sidebarCollapsed,
@@ -1784,6 +1843,8 @@ function snapshotState() {
     dsw: state.deletedSwitches,
     fl: state.floors,
     dfl: state.deletedFloors,
+    bk: state.breakers,
+    dbk: state.deletedBreakers,
   });
 }
 function pushHistory() {
@@ -1810,6 +1871,8 @@ function undo() {
   state.deletedSwitches      = prev.dsw || state.deletedSwitches;
   state.floors               = prev.fl;
   state.deletedFloors        = prev.dfl;
+  state.breakers             = prev.bk || state.breakers;
+  state.deletedBreakers      = prev.dbk || state.deletedBreakers;
   state.selectedId = null;
   state.selectedMeasurementId = null;
   state.selectedRoomLabelId = null;
@@ -1857,6 +1920,8 @@ async function load() {
     normalizeSwitches();
     if (data.floors) state.floors = data.floors;
     if (data.deletedFloors) state.deletedFloors = data.deletedFloors;
+    if (Array.isArray(data.breakers)) state.breakers = data.breakers;
+    if (data.deletedBreakers) state.deletedBreakers = data.deletedBreakers;
     if (data.currentFloor) state.currentFloor = String(data.currentFloor);
     if (data.zoom) state.zoom = data.zoom;
     if (data.sidebarCollapsed) state.sidebarCollapsed = true;
@@ -1946,6 +2011,8 @@ function getSyncPayload() {
     deletedSwitches: state.deletedSwitches,
     floors: state.floors,
     deletedFloors: state.deletedFloors,
+    breakers: state.breakers,
+    deletedBreakers: state.deletedBreakers,
     exportSel: state.exportSel,
     exportSelTs: state.exportSelTs,
   };
@@ -2111,6 +2178,34 @@ function mergeSyncData(remote) {
       state.deletedSwitches[f] = mergedDel;
     }
     normalizeSwitches();   // give any merged-in legacy/no-id switches their fields + convert pairing
+  }
+  // Merge electrical-panel breakers: one house-wide list, per-breaker LWW +
+  // tombstones (same strategy as switches, just not keyed by floor). Payloads
+  // from clients that predate breakers simply skip this block.
+  if (Array.isArray(remote.breakers)) {
+    const localDel  = state.deletedBreakers || {};
+    const remoteDel = remote.deletedBreakers || {};
+    const mergedDel = { ...localDel };
+    for (const id of Object.keys(remoteDel)) {
+      if (!mergedDel[id] || remoteDel[id] > mergedDel[id]) { mergedDel[id] = remoteDel[id]; changed = true; }
+    }
+    const byId = {};
+    for (const b of (state.breakers || [])) byId[b.id] = b;
+    for (const b of remote.breakers) {
+      const ex = byId[b.id];
+      const rTs = b._ts || 0;
+      if (!ex) { byId[b.id] = b; changed = true; }
+      else if (rTs > (ex._ts || 0)) { byId[b.id] = b; changed = true; }
+    }
+    const survivors = [];
+    for (const id of Object.keys(byId)) {
+      const b = byId[id];
+      const tomb = mergedDel[id];
+      if (tomb && tomb >= (b._ts || 0)) { changed = true; continue; }
+      survivors.push(b);
+    }
+    state.breakers = survivors;
+    state.deletedBreakers = mergedDel;
   }
   // Merge floors: per-floor LWW on the override record, plus tombstones.
   if (remote.floors) {
@@ -2389,6 +2484,8 @@ function overlayFrame() {
 function renderOverlay(f) {
   const fr = overlayFrame();
   els.floorImage.style.display = 'none';
+  const pb = document.getElementById('panel-board');
+  if (pb) { pb.style.display = 'none'; pb.innerHTML = ''; }
   const host = document.getElementById('overlay-stack');
   host.style.display = '';
   host.innerHTML = fr.items.map(i => {
@@ -2542,14 +2639,146 @@ document.addEventListener('keydown', (e) => {
   renderFloor(); saveOverlayLocal();
 });
 
+// ============================================================
+// ELECTRICAL PANEL TAB
+// ============================================================
+// A pseudo-floor (like the overlay) that renders the house's breaker panel in
+// the canvas: two columns (odd | even) like the real thing, every field
+// editable in place, and each breaker listing the switches assigned to it.
+// Breakers are REAL shared data — normal save/undo/sync, unlike overlay prefs.
+const PANEL_ID = '__panel__';
+function isPanel() { return String(state.currentFloor) === PANEL_ID; }
+function isSynthFloor() { return isOverlay() || isPanel(); }
+function panelCols() {
+  const bks = sortedBreakers();
+  return { left: bks.filter(b => (b.num || 0) % 2 === 1), right: bks.filter(b => (b.num || 0) % 2 === 0) };
+}
+function nextPanelNum(side) {
+  const arr = side === 'left' ? panelCols().left : panelCols().right;
+  if (!arr.length) return side === 'left' ? 1 : 2;
+  return Math.max(...arr.map(b => b.num || 0)) + 2;
+}
+// Which switches point at each breaker: { [bkId]: [{floorId, gangId, ref, control, floorName}] }
+function breakerAssignments() {
+  const map = {};
+  for (const fl of getAllFloors()) {
+    (state.switches[fl.id] || []).forEach(g => {
+      if (isHubGang(g)) return;
+      const letter = gangLetterOf(fl.id, g);
+      (g.switches || []).forEach((sw, i) => {
+        if (!sw.breaker) return;
+        (map[String(sw.breaker)] = map[String(sw.breaker)] || []).push({
+          floorId: fl.id, gangId: g.id, ref: letter + '-' + (i + 1),
+          control: sw.control || '', floorName: floorCode(fl),
+        });
+      });
+    });
+  }
+  return map;
+}
+function panelSlotHtml(b, assigned) {
+  const chips = (assigned || []).map(a =>
+    `<span class="pb-chip" data-locfloor="${a.floorId}" data-locgang="${a.gangId}" title="Show on plan">${winEscHtml(a.floorName + '·' + a.ref + (a.control ? ' ' + a.control : ''))}</span>`).join('');
+  return `<div class="pb-slot ${b.poles === 2 ? 'p2' : ''}" data-bk="${b.id}">
+    <input class="pb-in pb-num" data-bf="num" data-id="${b.id}" value="${b.num ?? ''}" inputmode="numeric" title="Breaker number">
+    <div class="pb-mid">
+      <input class="pb-in pb-label" data-bf="label" data-id="${b.id}" value="${winEscAttr(b.label || '')}" placeholder="what it feeds">
+      ${chips ? `<div class="pb-assigned">${chips}</div>` : ''}
+    </div>
+    <span class="pb-ampswrap"><input class="pb-in pb-amps" data-bf="amps" data-id="${b.id}" value="${b.amps ?? ''}" inputmode="numeric" placeholder="—">A</span>
+    <button class="pb-p2 ${b.poles === 2 ? 'on' : ''}" data-poles="${b.id}" title="Double-pole (240V)">2P</button>
+    <button class="pb-rm" data-bkrm="${b.id}" title="Remove breaker">✕</button>
+  </div>`;
+}
+function renderPanelBoard(f) {
+  const host = document.getElementById('panel-board');
+  els.floorImage.style.display = 'none';
+  const os = document.getElementById('overlay-stack');
+  if (os) { os.style.display = 'none'; os.innerHTML = ''; }
+  host.style.display = '';
+  const { left, right } = panelCols();
+  const asg = breakerAssignments();
+  const empty = !left.length && !right.length;
+  host.innerHTML = `<div class="pb-box">
+    <div class="pb-title">⚡ Electrical Panel</div>
+    <div class="pb-sub">${empty ? 'no breakers yet' : (left.length + right.length) + ' breakers · odd left, even right'}</div>
+    <div class="pb-cols">
+      ${empty ? `<div class="pb-empty">Copy the panel door card in here.<br>Use <b>+ breaker</b> below each column — odd numbers land on the left, even on the right, like the real panel.</div>` : ''}
+      <div class="pb-col">${left.map(b => panelSlotHtml(b, asg[String(b.id)])).join('')}<button class="pb-add" data-addside="left">＋ breaker (odd)</button></div>
+      <div class="pb-spine"></div>
+      <div class="pb-col">${right.map(b => panelSlotHtml(b, asg[String(b.id)])).join('')}<button class="pb-add" data-addside="right">＋ breaker (even)</button></div>
+    </div>
+  </div>`;
+  els.canvas.style.width = f.w + 'px';
+  els.canvas.style.height = f.h + 'px';
+  els.canvas.style.transform = `scale(${state.zoom})`;
+  els.canvasSizer.style.width = (f.w * state.zoom) + 'px';
+  els.canvasSizer.style.height = (f.h * state.zoom) + 'px';
+  els.statusFloor.textContent = `Electrical panel — ${left.length + right.length} breaker${left.length + right.length === 1 ? '' : 's'}`;
+  els.statusScale.textContent = '—';
+  els.zoomLevel.textContent = Math.round(state.zoom * 100) + '%';
+  ['furniture-layer', 'measure-layer', 'room-label-layer', 'window-layer', 'switch-link-layer', 'switch-layer']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  renderFloorTabs();
+  wirePanelBoard(host);
+}
+function wirePanelBoard(host) {
+  // text/number fields — update in place while typing, rebuild only when a
+  // number CHANGES (its column/position may move)
+  host.querySelectorAll('[data-bf]').forEach(el => {
+    const b = findBreaker(el.getAttribute('data-id'));
+    if (!b) return;
+    const field = el.getAttribute('data-bf');
+    el.addEventListener('input', () => {
+      if (field === 'num') b.num = parseInt(el.value, 10) || null;
+      else if (field === 'amps') b.amps = el.value === '' ? '' : (parseInt(el.value, 10) || '');
+      else b.label = el.value;
+      b._ts = Date.now();
+      scheduleSave();
+    });
+    if (field === 'num') el.addEventListener('change', () => renderFloor());
+  });
+  host.querySelectorAll('[data-poles]').forEach(el => el.addEventListener('click', () => {
+    const b = findBreaker(el.getAttribute('data-poles')); if (!b) return;
+    b.poles = b.poles === 2 ? 1 : 2; b._ts = Date.now();
+    renderFloor(); scheduleSave();
+  }));
+  host.querySelectorAll('[data-bkrm]').forEach(el => el.addEventListener('click', () => {
+    const b = findBreaker(el.getAttribute('data-bkrm')); if (!b) return;
+    if (!confirm(`Remove breaker ${bkRef(b)}?`)) return;
+    state.breakers = (state.breakers || []).filter(x => String(x.id) !== String(b.id));
+    tombstoneBreaker(b.id);
+    // clear any switch assignments that pointed at it
+    for (const fl of getAllFloors()) (state.switches[fl.id] || []).forEach(g => {
+      (g.switches || []).forEach(sw => { if (String(sw.breaker) === String(b.id)) { sw.breaker = null; touch(g); } });
+    });
+    renderFloor(); scheduleSave();
+  }));
+  host.querySelectorAll('[data-addside]').forEach(el => el.addEventListener('click', () => {
+    state.breakers.push({ id: genId(), num: nextPanelNum(el.getAttribute('data-addside')), label: '', amps: '', poles: 1, _ts: Date.now() });
+    renderFloor(); scheduleSave();
+    // focus the new breaker's label so door-card copying flows
+    const last = host.querySelector(`[data-addside="${el.getAttribute('data-addside')}"]`);
+    const col = last && last.parentElement; const slot = col && col.querySelector('.pb-slot:last-of-type .pb-label');
+    if (slot) slot.focus();
+  }));
+  host.querySelectorAll('.pb-chip').forEach(el => el.addEventListener('click', () =>
+    summaryLocate('switch', el.getAttribute('data-locfloor'), el.getAttribute('data-locgang'))));
+}
+
 function renderFloor() {
   const f = getFloor(state.currentFloor);
+  document.body.classList.toggle('floor-overlay', isOverlay());
+  document.body.classList.toggle('floor-panel', isPanel());
   if (isOverlay()) { renderOverlay(f); return; }
+  if (isPanel()) { renderPanelBoard(f); return; }
   els.floorImage.style.display = '';
   els.canvas.style.cursor = '';
   state.overlayEdit = null;
   const os = document.getElementById('overlay-stack');
   if (os) { os.style.display = 'none'; os.innerHTML = ''; }
+  const pb = document.getElementById('panel-board');
+  if (pb) { pb.style.display = 'none'; pb.innerHTML = ''; }
   renderOverlayPanel();
   // If labels are hidden AND we have a cleaned-PNG variant for this floor,
   // use that instead of the original (paints over baked-in room labels).
@@ -2646,6 +2875,26 @@ function renderFloorTabs() {
     saveOverlayLocal();
   });
   container.appendChild(ovl);
+
+  // Electrical-panel tab — the house's breaker schedule (real synced data).
+  const pnl = document.createElement('button');
+  pnl.textContent = '⚡ Panel';
+  pnl.title = 'Electrical panel — breakers & what each one feeds';
+  if (isPanel()) pnl.classList.add('active');
+  pnl.addEventListener('click', () => {
+    if (isPanel()) return;
+    if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); }
+    if (state.labelMode) { state.labelMode = false; window.__applyLabelMode && window.__applyLabelMode(); }
+    if (state.windowMode) { state.windowMode = false; window.__applyWindowMode && window.__applyWindowMode(); }
+    if (state.switchMode) { state.switchMode = false; window.__applySwitchMode && window.__applySwitchMode(); }
+    state.prevFloor = state.currentFloor;
+    state.currentFloor = PANEL_ID;
+    state.selectedId = null; state.selectedMeasurementId = null; state.selectedWindowId = null; state.selectedSwitchId = null; state.selectedRoomLabelId = null;
+    if (state.sidebarCollapsed) { state.sidebarCollapsed = false; applySidebarCollapsed(); }
+    renderFloor();
+    scheduleSave();
+  });
+  container.appendChild(pnl);
 
   const addBtn = document.createElement('button');
   addBtn.textContent = '+';
@@ -3174,6 +3423,9 @@ function axisLockTo(pt, from) {
 }
 
 els.canvas.addEventListener('pointerdown', (e) => {
+  // Panel tab: the board's own inputs/buttons handle everything — the canvas
+  // must not treat presses as placement or deselect.
+  if (isPanel()) return;
   // Overlay is a sandbox: the only thing a canvas drag can do is move the plan
   // being adjusted. It never creates or edits anything on a real floor.
   if (isOverlay()) { overlayDragStart(e); return; }
@@ -3322,7 +3574,7 @@ let pinchStart = null;
       return;
     }
     // A tap candidate for placement/deselect — not on a draggable element, not while measuring/labelling.
-    if (state.measureMode || state.labelMode || state.selectMode || isOverlay()) { tap = null; return; }
+    if (state.measureMode || state.labelMode || state.selectMode || isSynthFloor()) { tap = null; return; }
     if (e.target.closest('.furniture, .win-pin, .sw-pin, .room-label, .m-handle')) { tap = null; return; }
     tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), moved: false };
   });
@@ -4198,10 +4450,22 @@ let winDrag = null;
 // 1..N switches; each switch is normal/dimmer and may join a circuit (3-way,
 // 4-way, …) with any number of other switches that control the same light.
 // Same lifecycle as windows: save/load/undo/sync.
-const SWITCH_TYPES = ['normal', 'dimmer', 'blank', 'remote', 'outlet'];
-// Primary type is one of normal/dimmer/blank (exactly one). `smart` and `ledStrip`
-// are independent flags that can layer on top of any non-blank type.
-function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : t === 'outlet' ? 'Outlet' : 'Switch'; }
+const SWITCH_TYPES = ['normal', 'dimmer', 'accessory', 'blank', 'remote', 'outlet'];
+// Primary type is one of normal/dimmer/accessory/blank (exactly one). `smart` and
+// `ledStrip` are independent flags that can layer on top of any non-blank type.
+function switchTypeLabel(t) { return t === 'dimmer' ? 'Dimmer' : t === 'accessory' ? 'Accessory' : t === 'blank' ? 'Blank' : t === 'remote' ? 'Remote' : t === 'outlet' ? 'Outlet' : 'Switch'; }
+// ---- Electrical-panel breakers (house-wide list; assignment lives on each switch).
+function sortedBreakers() { return [...(state.breakers || [])].sort((a, b) => (a.num || 0) - (b.num || 0)); }
+function findBreaker(id) { return (state.breakers || []).find(b => String(b.id) === String(id)) || null; }
+function bkRef(b) { return b ? ('#' + (b.num ?? '?') + (b.label ? ' ' + b.label : '') + (b.amps ? ` (${b.amps}A)` : '')) : ''; }
+function breakerSelectHtml(sw, i) {
+  const bks = sortedBreakers();
+  if (!bks.length) return `<select class="si-breaker" data-breaker="${i}" disabled><option>⚡ breaker — none yet (add in ⚡ Panel tab)</option></select>`;
+  return `<select class="si-breaker" data-breaker="${i}">
+    <option value="">⚡ breaker: —</option>
+    ${bks.map(b => `<option value="${b.id}" ${String(sw.breaker) === String(b.id) ? 'selected' : ''}>${winEscHtml(bkRef(b))}</option>`).join('')}
+  </select>`;
+}
 // A pin is either a switch GANG (lettered A,B,C…) or a standalone HUB device (◉).
 function isHubGang(g) { return !!g && g.kind === 'hub'; }
 // A gang whose (non-blank) switches are all "remote" reads as a remote pin → amber.
@@ -4344,7 +4608,7 @@ function normalizeSwitches() {
     if (!state.deletedSwitches[sf]) state.deletedSwitches[sf] = {};
     for (const s of state.switches[sf]) {
       if (s._ts == null) s._ts = 0;
-      if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }];
+      if (!Array.isArray(s.switches)) s.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, breaker: null, smart: false, ledStrip: false, nightMode: false }];
       // The old "hub" switch-type is gone. Promote a pin to a hub ONLY when it's
       // unambiguously one — a lone, unpaired hub switch — so paired or multi-switch
       // gangs are never disturbed (anything else just gets the dead type demoted to
@@ -4353,6 +4617,7 @@ function normalizeSwitches() {
       for (const sw of s.switches) {
         if (sw.id == null) sw.id = genId();
         if (sw.circuit === undefined) sw.circuit = null;
+        if (sw.breaker === undefined) sw.breaker = null;   // panel-breaker assignment (id into state.breakers)
         if (sw.type == null || sw.type === 'hub') sw.type = 'normal';   // primary: normal | dimmer | blank | remote
         if (typeof sw.smart !== 'boolean') sw.smart = false;            // independent feature flags
         if (typeof sw.ledStrip !== 'boolean') sw.ledStrip = false;
@@ -4415,7 +4680,7 @@ function newSwitch(x, y) {
   return {
     id: genId(), x, y,
     label: base + '-S' + n,
-    switches: [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }],
+    switches: [{ id: genId(), control: '', type: 'normal', circuit: null, breaker: null, smart: false, ledStrip: false, nightMode: false }],
     _ts: Date.now(),
   };
 }
@@ -4581,6 +4846,7 @@ function renderSwitchInspector(container, force) {
       <div class="wi-seg" data-segsw="${i}">
         <button data-v="normal" class="${sw.type === 'normal' ? 'on' : ''}">Switch</button>
         <button data-v="dimmer" class="${sw.type === 'dimmer' ? 'on' : ''}">Dimmer</button>
+        <button data-v="accessory" class="${sw.type === 'accessory' ? 'on' : ''}">Accessory</button>
         <button data-v="blank" class="${sw.type === 'blank' ? 'on' : ''}">Blank</button>
         <button data-v="remote" class="${sw.type === 'remote' ? 'on' : ''}">Remote</button>
         <button data-v="outlet" class="${sw.type === 'outlet' ? 'on' : ''}">Outlet</button>
@@ -4600,6 +4866,7 @@ function renderSwitchInspector(container, force) {
         <option value="">${cid != null ? '＋ add another switch to this circuit…' : '＋ pair ' + winEscHtml(ref) + ' with…'}</option>
         ${opts.map(u => `<option value="${u.id}">${winEscHtml(u.ref)}${u.control ? ' — ' + winEscHtml(u.control) : ''} · ${winEscHtml(u.label)} (${winEscHtml(String(u.floor))})${u.circuit != null ? ' ●' : ''}</option>`).join('')}
       </select>`}
+      ${sw.type === 'blank' ? '' : breakerSelectHtml(sw, i)}
     </div>`;
   }).join('');
   container.innerHTML = `
@@ -4647,7 +4914,7 @@ function wireSwitchInspector(container, loc) {
         loc.kind = 'hub';
       } else {
         delete loc.kind;
-        if (!Array.isArray(loc.switches) || !loc.switches.length) loc.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }];
+        if (!Array.isArray(loc.switches) || !loc.switches.length) loc.switches = [{ id: genId(), control: '', type: 'normal', circuit: null, breaker: null, smart: false, ledStrip: false, nightMode: false }];
       }
       touch(loc); renderSwitches(); renderSwitchInspector(container, true); scheduleSave();
     });
@@ -4658,6 +4925,10 @@ function wireSwitchInspector(container, loc) {
   // per-switch control text (no rebuild — keep focus)
   container.querySelectorAll('[data-sf="control"]').forEach(el => {
     el.addEventListener('input', () => { loc.switches[+el.dataset.i].control = el.value; touch(loc); scheduleSave(); });
+  });
+  // per-switch panel-breaker assignment
+  container.querySelectorAll('[data-breaker]').forEach(el => {
+    el.addEventListener('change', () => { loc.switches[+el.getAttribute('data-breaker')].breaker = el.value || null; touch(loc); scheduleSave(); });
   });
   // primary type (Switch / Dimmer / Blank) — exactly one, always set
   container.querySelectorAll('[data-segsw] button').forEach(b => {
@@ -4708,7 +4979,7 @@ function wireSwitchInspector(container, loc) {
     });
   });
   const add = container.querySelector('[data-act="add"]');
-  if (add) add.addEventListener('click', () => { loc.switches.push({ id: genId(), control: '', type: 'normal', circuit: null, smart: false, ledStrip: false, nightMode: false }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
+  if (add) add.addEventListener('click', () => { loc.switches.push({ id: genId(), control: '', type: 'normal', circuit: null, breaker: null, smart: false, ledStrip: false, nightMode: false }); touch(loc); renderSwitchInspector(container, true); renderSwitches(); scheduleSave(); });
   const rm = container.querySelector('[data-act="remove"]');
   if (rm) rm.addEventListener('click', () => { if (confirm(`Remove gang "${loc.label}" and its ${loc.switches.length} switch(es)?`)) deleteSwitch(loc.id); });
   const csv = container.querySelector('[data-act="csv"]');
@@ -4765,12 +5036,12 @@ function wireSwitchRowDrag(container, loc) {
 function exportSwitchesCsv(opts) {
   const selectedOnly = !!(opts && opts.selectedOnly);
   const selSet = exportSelSet();
-  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Smart', 'LED Strip', 'Night', 'Circuit']];
+  const rows = [['Floor', 'Gang', 'Location', 'Ref', 'Controls', 'Type', 'Smart', 'LED Strip', 'Night', 'Circuit', 'Breaker']];
   for (const f of getAllFloors()) {
     (state.switches[f.id] || []).forEach((s) => {
       if (isHubGang(s)) {
         if (selectedOnly) return;                       // hubs aren't part of the export selection
-        rows.push([f.name || f.id, '', s.label || 'Hub', '', '', 'Hub', '', '', '', '']);
+        rows.push([f.name || f.id, '', s.label || 'Hub', '', '', 'Hub', '', '', '', '', '']);
         return;
       }
       const letter = gangLetterOf(f.id, s);
@@ -4781,7 +5052,7 @@ function exportSwitchesCsv(opts) {
           const others = circuitMembers(sw.circuit).filter(m => String(m.sw.id) !== String(sw.id)).map(m => memberRef(m, f.id));
           if (others.length) circuit = (others.length + 1) + '-way with ' + others.join(' + ');
         }
-        rows.push([f.name || f.id, letter, s.label, letter + '-' + (i + 1), sw.control || '', switchTypeLabel(sw.type), sw.smart ? 'Yes' : '', sw.ledStrip ? 'Yes' : '', sw.nightMode ? 'Yes' : '', circuit]);
+        rows.push([f.name || f.id, letter, s.label, letter + '-' + (i + 1), sw.control || '', switchTypeLabel(sw.type), sw.smart ? 'Yes' : '', sw.ledStrip ? 'Yes' : '', sw.nightMode ? 'Yes' : '', circuit, bkRef(findBreaker(sw.breaker))]);
       });
     });
   }
@@ -4985,6 +5256,7 @@ function renderSummary() {
           meta = `${nSel} of ${s.switches.length} selected`;
         } else {
           const dimmers = s.switches.filter(x => x.type === 'dimmer').length;
+          const accs    = s.switches.filter(x => x.type === 'accessory').length;
           const blanks  = s.switches.filter(x => x.type === 'blank').length;
           const remotes = s.switches.filter(x => x.type === 'remote').length;
           const outlets = s.switches.filter(x => x.type === 'outlet').length;
@@ -4994,6 +5266,7 @@ function renderSummary() {
           const paired  = s.switches.filter(x => x.circuit != null).length;
           const metaBits = [`${s.switches.length}-gang`];
           if (dimmers) metaBits.push(`${dimmers} dimmer${dimmers !== 1 ? 's' : ''}`);
+          if (accs)    metaBits.push(`${accs} accessor${accs !== 1 ? 'ies' : 'y'}`);
           if (remotes) metaBits.push(`${remotes} remote${remotes !== 1 ? 's' : ''}`);
           if (outlets) metaBits.push(`${outlets} outlet${outlets !== 1 ? 's' : ''}`);
           if (blanks)  metaBits.push(`${blanks} blank${blanks !== 1 ? 's' : ''}`);
@@ -5018,7 +5291,8 @@ function renderSummary() {
             const cb = selectable
               ? `<label class="sum-pick" title="Select ${letter}-${j + 1} for export"><input type="checkbox" data-pick="${sw.id}" ${picked ? 'checked' : ''}></label>`
               : `<span class="sum-pick" style="width:15px"></span>`;
-            return `<div class="sum-kv${picked ? ' picked' : ''}">${cb}<b>${letter}-${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${switchTypeLabel(sw.type)}${flags.length ? ' · ' + winEscHtml(flags.join(' · ')) : ''}${circ}</span></div>`;
+            const bk = findBreaker(sw.breaker);
+            return `<div class="sum-kv${picked ? ' picked' : ''}">${cb}<b>${letter}-${j + 1}${sw.control ? ' · ' + winEscHtml(sw.control) : ''}</b><span>${switchTypeLabel(sw.type)}${flags.length ? ' · ' + winEscHtml(flags.join(' · ')) : ''}${circ}${bk ? ' · <span style="color:#b45309">⚡ #' + winEscHtml(String(bk.num ?? '?')) + '</span>' : ''}</span></div>`;
           }).join('');
         html += `<details class="sum-item"${onlySel ? ' open' : ''}>
           <summary><span class="sum-num sw">${letter}</span><span class="sum-label">${winEscHtml(s.label)}</span><span class="sum-meta">${meta}</span></summary>
@@ -5089,10 +5363,10 @@ function applyView(v, skipSave) {
   // Relabel the Clear button so it's obvious it only clears the active layer.
   const clearLabel = document.getElementById('clear-label');
   if (clearLabel) clearLabel.textContent = 'Clear ' + (v === 'windows' ? 'windows' : v === 'switches' ? 'switches' : 'furniture');
-  // The view drives placement mode for its layer — except on the overlay, which
-  // is view-only, so switching view tabs there must not arm a placement cursor.
-  state.windowMode = (v === 'windows') && !isOverlay();
-  state.switchMode = (v === 'switches') && !isOverlay();
+  // The view drives placement mode for its layer — except on the overlay/panel
+  // pseudo-floors, where switching view tabs must not arm a placement cursor.
+  state.windowMode = (v === 'windows') && !isSynthFloor();
+  state.switchMode = (v === 'switches') && !isSynthFloor();
   // Leaving Furniture view also drops the furniture-only Measure/Label tools.
   if (v !== 'furniture') {
     if (state.measureMode) { state.measureMode = false; state.measureFirstPoint = null; state.measurePreview = null; window.__applyMeasureMode && window.__applyMeasureMode(); }
@@ -5817,8 +6091,8 @@ document.getElementById('sync-clear').addEventListener('click', () => {
   renderSidebar();
   // On phones, start with both side panels collapsed so the plan gets full width.
   if (window.matchMedia('(max-width: 768px)').matches) { state.sidebarCollapsed = true; state.panelMinimized = true; }
-  // Reopening straight onto the overlay tab: its controls live in the sidebar.
-  else if (isOverlay() && state.sidebarCollapsed) state.sidebarCollapsed = false;
+  // Reopening straight onto the overlay/panel tab: its controls live in the sidebar.
+  else if (isSynthFloor() && state.sidebarCollapsed) state.sidebarCollapsed = false;
   applySidebarCollapsed();
   applyPropsCollapsed();
   applyLabelsVisible();
