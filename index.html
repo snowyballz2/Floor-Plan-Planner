@@ -240,7 +240,19 @@
   .pb-spine { background: #262b33; border-radius: 6px; }
   .pb-col { display: flex; flex-direction: column; gap: 6px; }
   .pb-slot { display: flex; align-items: flex-start; gap: 6px; background: #f5f6f8; border: 1px solid #262b33; border-radius: 7px; padding: 7px 8px; }
-  .pb-slot.p2 { box-shadow: inset 0 0 0 2px #b45309; }
+  /* a 2-pole breaker = two tied rows inside one amber frame */
+  .pb-p2wrap { display: flex; flex-direction: column; gap: 3px; border: 2px solid #b45309; border-radius: 10px; padding: 3px; }
+  .pb-p2wrap .pb-slot { border-color: #d8dbe2; }
+  .pb-p2b { background: #efe9e2; align-items: center; }
+  .pb-p2b .pb-p2b-lbl { display: block; font-size: 12px; color: #6b7280; padding: 3px 4px; }
+  .pb-p2tag { pointer-events: none; }
+  .pb-enum { flex: 0 0 30px; width: 30px; text-align: center; font-weight: 800; font-size: 13px; color: #4b5563; align-self: center; }
+  /* unused spaces — shown like the real panel's blank slots; tap to add */
+  .pb-slot-empty { display: flex; align-items: center; gap: 6px; width: 100%; background: transparent; border: 1.5px dashed #566070; border-radius: 7px; padding: 6px 8px; font: inherit; color: #8a94a6; cursor: pointer; text-align: left; }
+  .pb-slot-empty:hover { border-color: #cbd5e1; color: #e5e7eb; }
+  .pb-slot-empty .pb-enum { color: #8a94a6; }
+  .pb-slot-empty .pb-etext { flex: 1; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; opacity: .75; }
+  .pb-slot-empty .pb-eplus { font-weight: 700; font-size: 14px; opacity: .8; }
   .pb-num { flex: 0 0 30px; width: 30px; text-align: center; font-weight: 800; font-size: 13px; }
   .pb-mid { flex: 1 1 auto; min-width: 0; }
   .pb-in { font: inherit; font-size: 12px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #111827; padding: 3px 4px; }
@@ -256,8 +268,6 @@
   .pb-assigned { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
   .pb-chip { font-size: 10px; font-weight: 600; background: #e0ecff; color: #1d4ed8; border-radius: 20px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
   .pb-chip:hover { background: #1d4ed8; color: #fff; }
-  .pb-add { margin-top: 4px; padding: 8px; font: inherit; font-size: 12px; font-weight: 700; border: 1.5px dashed #6b7280; border-radius: 7px; background: transparent; color: #cbd5e1; cursor: pointer; }
-  .pb-add:hover { border-color: #e5e7eb; color: #fff; }
   .pb-empty { grid-column: 1 / -1; color: #cbd5e1; font-size: 12.5px; text-align: center; padding: 26px 20px 12px; line-height: 1.6; }
   /* Read-only lock: browse everything, edit nothing. */
   #readonly-btn.on { background: #b45309 !important; border-color: #b45309 !important; color: #fff !important; }
@@ -267,10 +277,12 @@
   body.read-only #clear-floor, body.read-only #undo-btn, body.read-only #measure-toggle,
   body.read-only #room-label-add-btn, body.read-only #window-add-btn, body.read-only #switch-add-btn,
   body.read-only #select-mode-btn, body.read-only #mobile-add-fab,
-  body.read-only .pb-add, body.read-only .pb-rm,
+  body.read-only .pb-rm,
   body.read-only .ovl-adj, body.read-only .ovl-adjbox { display: none !important; }
   body.read-only .pb-p2 { pointer-events: none; }
   body.read-only .pb-p2:not(.on) { visibility: hidden; }                       /* keep showing real 2P marks */
+  body.read-only .pb-slot-empty { pointer-events: none; }                      /* empties stay visible, not addable */
+  body.read-only .pb-slot-empty .pb-eplus { visibility: hidden; }
   body.read-only .sum-pick { pointer-events: none; opacity: .5; }
   .ovl-note { font-size: 10.5px; color: var(--ink-faint); line-height: 1.45; margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--border); }
   .furniture-layer {
@@ -1546,10 +1558,9 @@ function getFloor(id) {
     return { id, name: 'Overlay', order: 9999, src: '', w: fr.w, h: fr.h, pxPerFt: fr.pxPerFt, offsetX: fr.offsetX, offsetY: fr.offsetY, _ts: 0, isDefault: false, isOverlay: true };
   }
   if (id === PANEL_ID) {
-    // Board height follows the taller breaker column so nothing clips.
-    const c = panelCols();
-    const rows = Math.max(c.left.length, c.right.length, 5);
-    return { id, name: 'Panel', order: 9998, src: '', w: 860, h: 170 + rows * 58 + 60, pxPerFt: 20, offsetX: 0, offsetY: 0, _ts: 0, isDefault: false, isPanel: true };
+    // Board height follows the full slot grid (occupied rows are taller than empties).
+    const est = side => panelSlotEntries(side).reduce((h, e) => h + (e.t === 'empty' ? 39 : 53), 0);
+    return { id, name: 'Panel', order: 9998, src: '', w: 860, h: 165 + Math.max(est('left'), est('right')) + 50, pxPerFt: 20, offsetX: 0, offsetY: 0, _ts: 0, isDefault: false, isPanel: true };
   }
   const base = FLOORS[id];
   const meta = FLOOR_META[id];
@@ -2673,10 +2684,28 @@ function panelCols() {
   const bks = sortedBreakers();
   return { left: bks.filter(b => (b.num || 0) % 2 === 1), right: bks.filter(b => (b.num || 0) % 2 === 0) };
 }
-function nextPanelNum(side) {
-  const arr = side === 'left' ? panelCols().left : panelCols().right;
-  if (!arr.length) return side === 'left' ? 1 : 2;
-  return Math.max(...arr.map(b => b.num || 0)) + 2;
+// The panel is drawn as its full grid of SPACES, like the real thing: 40 slots
+// (grows if a breaker is numbered past 40), empties included. A 2-pole breaker
+// occupies its slot AND the next one down on the same side — both rows render.
+function panelMaxSlot() {
+  let m = 40;
+  for (const b of (state.breakers || [])) { const end = (b.num || 0) + ((b.poles === 2) ? 2 : 0); if (end > m) m = end; }
+  return m % 2 ? m + 1 : m;
+}
+// Ordered slot entries for one side: {t:'bk'|'p2b'|'empty', n, b?}. 'p2b' is the
+// second pole of the 2-pole breaker starting two slots up.
+function panelSlotEntries(side) {
+  const start = side === 'left' ? 1 : 2, max = panelMaxSlot();
+  const byNum = {};
+  for (const b of sortedBreakers()) { const n = b.num || 0; if (n >= 1 && (n % 2 === 1) === (side === 'left') && !byNum[n]) byNum[n] = b; }
+  const out = [];
+  for (let n = start; n <= max; n += 2) {
+    const b = byNum[n], prev = byNum[n - 2];
+    if (b) out.push({ t: 'bk', n, b });
+    else if (prev && prev.poles === 2) out.push({ t: 'p2b', n, b: prev });
+    else out.push({ t: 'empty', n });
+  }
+  return out;
 }
 // The real panel's door card (Eaton 200A main), transcribed from a photo.
 // Numbered odd = left column, even = right column, top to bottom; a 2-pole
@@ -2744,16 +2773,45 @@ function breakerAssignments() {
 function panelSlotHtml(b, assigned) {
   const chips = (assigned || []).map(a =>
     `<span class="pb-chip" data-locfloor="${a.floorId}" data-locgang="${a.gangId}" title="Show on plan">${winEscHtml(a.floorName + '·' + a.ref + (a.control ? ' ' + a.control : ''))}</span>`).join('');
-  return `<div class="pb-slot ${b.poles === 2 ? 'p2' : ''}" data-bk="${b.id}">
+  return `<div class="pb-slot" data-bk="${b.id}">
     <input class="pb-in pb-num" data-bf="num" data-id="${b.id}" value="${b.num ?? ''}" inputmode="numeric" title="Breaker number" ${state.readOnly ? 'readonly' : ''}>
     <div class="pb-mid">
       <input class="pb-in pb-label" data-bf="label" data-id="${b.id}" value="${winEscAttr(b.label || '')}" placeholder="${state.readOnly ? '' : 'what it feeds'}" ${state.readOnly ? 'readonly' : ''}>
       ${chips ? `<div class="pb-assigned">${chips}</div>` : ''}
     </div>
     <span class="pb-ampswrap"><input class="pb-in pb-amps" data-bf="amps" data-id="${b.id}" value="${b.amps ?? ''}" inputmode="numeric" placeholder="${state.readOnly ? '' : '—'}" ${state.readOnly ? 'readonly' : ''}>A</span>
-    <button class="pb-p2 ${b.poles === 2 ? 'on' : ''}" data-poles="${b.id}" title="Double-pole (240V)">2P</button>
+    <button class="pb-p2 ${b.poles === 2 ? 'on' : ''}" data-poles="${b.id}" title="Double-pole (240V) — occupies this slot and the next one down">2P</button>
     <button class="pb-rm" data-bkrm="${b.id}" title="Remove breaker">✕</button>
   </div>`;
+}
+// The second pole of a 2-pole breaker: its own numbered row (like the door
+// card), tied to the first — shows the shared label/amps, not editable here.
+function panelP2bHtml(n, b) {
+  return `<div class="pb-slot pb-p2b" title="Second pole of #${b.num}${b.label ? ' · ' + winEscAttr(b.label) : ''}">
+    <span class="pb-enum">${n}</span>
+    <div class="pb-mid"><span class="pb-p2b-lbl">${winEscHtml(b.label || '')}&nbsp;</span></div>
+    <span class="pb-ampswrap">${b.amps || ''}A</span>
+    <span class="pb-p2 on pb-p2tag">2P</span>
+  </div>`;
+}
+function panelColHtml(side, asg) {
+  const entries = panelSlotEntries(side);
+  let html = '';
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (e.t === 'bk') {
+      const slot = panelSlotHtml(e.b, asg[String(e.b.id)]);
+      if (e.b.poles === 2 && i + 1 < entries.length && entries[i + 1].t === 'p2b' && entries[i + 1].b === e.b) {
+        html += `<div class="pb-p2wrap">${slot}${panelP2bHtml(entries[i + 1].n, e.b)}</div>`;
+        i++;
+      } else html += slot;
+    } else if (e.t === 'p2b') {
+      html += panelP2bHtml(e.n, e.b);   // second pole whose partner slot is oddly occupied — still shown
+    } else {
+      html += `<button type="button" class="pb-slot-empty" data-addat="${e.n}" title="Add breaker #${e.n}"><span class="pb-enum">${e.n}</span><span class="pb-etext">empty</span><span class="pb-eplus">＋</span></button>`;
+    }
+  }
+  return html;
 }
 function renderPanelBoard(f) {
   const host = document.getElementById('panel-board');
@@ -2761,17 +2819,15 @@ function renderPanelBoard(f) {
   const os = document.getElementById('overlay-stack');
   if (os) { os.style.display = 'none'; os.innerHTML = ''; }
   host.style.display = '';
-  const { left, right } = panelCols();
   const asg = breakerAssignments();
-  const empty = !left.length && !right.length;
+  const nBk = sortedBreakers().length;
   host.innerHTML = `<div class="pb-box">
     <div class="pb-title">⚡ Electrical Panel</div>
-    <div class="pb-sub">${empty ? 'no breakers yet' : (left.length + right.length) + ' breakers · odd left, even right'}</div>
+    <div class="pb-sub">${panelMaxSlot()} spaces · ${nBk} breaker${nBk === 1 ? '' : 's'} · odd left, even right${state.readOnly ? '' : ' · tap an empty slot to add'}</div>
     <div class="pb-cols">
-      ${empty ? `<div class="pb-empty">Copy the panel door card in here.<br>Use <b>+ breaker</b> below each column — odd numbers land on the left, even on the right, like the real panel.</div>` : ''}
-      <div class="pb-col">${left.map(b => panelSlotHtml(b, asg[String(b.id)])).join('')}<button class="pb-add" data-addside="left">＋ breaker (odd)</button></div>
+      <div class="pb-col">${panelColHtml('left', asg)}</div>
       <div class="pb-spine"></div>
-      <div class="pb-col">${right.map(b => panelSlotHtml(b, asg[String(b.id)])).join('')}<button class="pb-add" data-addside="right">＋ breaker (even)</button></div>
+      <div class="pb-col">${panelColHtml('right', asg)}</div>
     </div>
   </div>`;
   els.canvas.style.width = f.w + 'px';
@@ -2779,7 +2835,7 @@ function renderPanelBoard(f) {
   els.canvas.style.transform = `scale(${state.zoom})`;
   els.canvasSizer.style.width = (f.w * state.zoom) + 'px';
   els.canvasSizer.style.height = (f.h * state.zoom) + 'px';
-  els.statusFloor.textContent = `Electrical panel — ${left.length + right.length} breaker${left.length + right.length === 1 ? '' : 's'}`;
+  els.statusFloor.textContent = `Electrical panel — ${nBk} breaker${nBk === 1 ? '' : 's'} · ${panelMaxSlot()} spaces`;
   els.statusScale.textContent = '—';
   els.zoomLevel.textContent = Math.round(state.zoom * 100) + '%';
   ['furniture-layer', 'measure-layer', 'room-label-layer', 'window-layer', 'switch-link-layer', 'switch-layer']
@@ -2826,13 +2882,14 @@ function wirePanelBoard(host) {
     });
     renderFloor(); scheduleSave();
   }));
-  host.querySelectorAll('[data-addside]').forEach(el => el.addEventListener('click', () => {
-    state.breakers.push({ id: genId(), num: nextPanelNum(el.getAttribute('data-addside')), label: '', amps: '', poles: 1, _ts: Date.now() });
+  host.querySelectorAll('[data-addat]').forEach(el => el.addEventListener('click', () => {
+    if (state.readOnly) return;
+    const nb = { id: genId(), num: +el.getAttribute('data-addat'), label: '', amps: '', poles: 1, _ts: Date.now() };
+    state.breakers.push(nb);
     renderFloor(); scheduleSave();
     // focus the new breaker's label so door-card copying flows
-    const last = host.querySelector(`[data-addside="${el.getAttribute('data-addside')}"]`);
-    const col = last && last.parentElement; const slot = col && col.querySelector('.pb-slot:last-of-type .pb-label');
-    if (slot) slot.focus();
+    const inp = document.querySelector(`.pb-label[data-id="${nb.id}"]`);
+    if (inp) inp.focus();
   }));
   host.querySelectorAll('.pb-chip').forEach(el => el.addEventListener('click', () =>
     summaryLocate('switch', el.getAttribute('data-locfloor'), el.getAttribute('data-locgang'))));
