@@ -3,3 +3,5 @@
 # Local window photos — keep the folder + README, ignore the images
 photos/*
 !photos/README.md
+# Reference photo of the real panel — never publish
+Electrical Panel.jpg

@@ -2678,6 +2678,51 @@ function nextPanelNum(side) {
   if (!arr.length) return side === 'left' ? 1 : 2;
   return Math.max(...arr.map(b => b.num || 0)) + 2;
 }
+// The real panel's door card (Eaton 200A main), transcribed from a photo.
+// Numbered odd = left column, even = right column, top to bottom; a 2-pole
+// breaker sits at its first slot and spans the next one on the same side.
+// FIXED ids + _ts:1 so every device seeds identically and any user edit,
+// rename, renumber, or delete (tombstone) wins over the seed forever.
+const SEED_BREAKERS = [
+  { n: 1,  l: 'Basement bath GFI', a: 20 },
+  { n: 3,  l: 'Powder room GFI · Master GFI', a: 20 },
+  { n: 5,  l: 'Kitchen GFI', a: 20 },
+  { n: 7,  l: 'Refrigerator', a: 20 },
+  { n: 9,  l: 'Kitchen GFI', a: 20 },
+  { n: 11, l: 'Dining room outlets', a: 20 },
+  { n: 13, l: 'Stove hood', a: 20 },
+  { n: 15, l: 'Kitchen GFI', a: 20 },
+  { n: 17, l: 'Disposal', a: 20 },
+  { n: 19, l: 'Microwave', a: 20 },
+  { n: 21, l: 'Dishwasher', a: 20 },
+  { n: 23, l: 'Laundry', a: 20 },
+  { n: 25, l: 'Dryer', a: 30, p: 2 },
+  { n: 29, l: 'Furnace', a: 60, p: 2 },
+  { n: 33, l: 'Basement office lights', a: 15 },
+  { n: 2,  l: 'AC unit 1', a: 30, p: 2 },
+  { n: 6,  l: 'AC unit 2', a: 30, p: 2 },
+  { n: 10, l: 'Furnace', a: 15 },
+  { n: 12, l: 'Outside plug', a: 15 },
+  { n: 14, l: 'Basement + office lights', a: 15 },
+  { n: 16, l: 'Mechanical room + basement BR lights', a: 15 },
+  { n: 18, l: 'Bedroom outlets', a: 15 },
+  { n: 20, l: 'Master outlets', a: 15 },
+  { n: 22, l: 'Smoke detectors', a: 15 },
+  { n: 24, l: 'Living room lights', a: 15 },
+  { n: 28, l: 'Bedroom 1 + 2 outlets', a: 15 },
+  { n: 30, l: 'Master outlets', a: 15 },
+  { n: 32, l: 'Master lights + master bath lights', a: 15 },
+  { n: 34, l: 'Living room outlets', a: 15 },
+  { n: 36, l: 'Foyer · garage · upstairs lights', a: 20 },
+];
+// One-time seed: only when the device has NO breakers and has never deleted any
+// (tombstones present = the user cleared them on purpose — never resurrect).
+// Identical fixed ids on every device merge as one list, not duplicates.
+function seedBreakersIfEmpty() {
+  if ((state.breakers || []).length) return;
+  if (Object.keys(state.deletedBreakers || {}).length) return;
+  state.breakers = SEED_BREAKERS.map(s => ({ id: 910000 + s.n, num: s.n, label: s.l, amps: s.a, poles: s.p || 1, _ts: 1 }));
+}
 // Which switches point at each breaker: { [bkId]: [{floorId, gangId, ref, control, floorName}] }
 function breakerAssignments() {
   const map = {};
@@ -6157,6 +6202,7 @@ document.getElementById('sync-clear').addEventListener('click', () => {
 // ============================================================
 (async function init() {
   await load();
+  seedBreakersIfEmpty();  // first launch after the panel photo: fill the door card in
   restorePhotoFolder();   // re-attach a remembered photos folder (Chrome/Edge File System Access; no-op in Safari)
   pushHistory();   // initial snapshot — undo can revert the first mutation back to load state
   renderSidebar();
